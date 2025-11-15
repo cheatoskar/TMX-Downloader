@@ -44,18 +44,23 @@
         statsCalculated: null
     };
 
+    // Cross-browser runtime API
+    const runtime = typeof browser !== 'undefined' ? browser : chrome;
+
     // ============================================================================
     // PROXY HELPERS
     // ============================================================================
     async function proxyFetchJson(url) {
         return new Promise((resolve, reject) => {
-            chrome.runtime.sendMessage({action: 'fetchApi', url}, (res) => {
-                if (chrome.runtime.lastError) {
-                    reject(chrome.runtime.lastError);
+            runtime.runtime.sendMessage({action: 'fetchApi', url}, (res) => {
+                if (runtime.runtime.lastError) {
+                    reject(runtime.runtime.lastError);
+                } else if (res === undefined) {
+                    reject(new Error('No response from background script'));
                 } else if (res.success) {
                     resolve(res.data);
                 } else {
-                    reject(new Error(res.error));
+                    reject(new Error(res.error || 'Unknown error from background'));
                 }
             });
         });
@@ -63,9 +68,11 @@
 
     async function proxyFetchBinary(url) {
         return new Promise((resolve, reject) => {
-            chrome.runtime.sendMessage({action: 'fetchBinary', url}, (res) => {
-                if (chrome.runtime.lastError) {
-                    reject(chrome.runtime.lastError);
+            runtime.runtime.sendMessage({action: 'fetchBinary', url}, (res) => {
+                if (runtime.runtime.lastError) {
+                    reject(runtime.runtime.lastError);
+                } else if (res === undefined) {
+                    reject(new Error('No response from background script'));
                 } else if (res.success) {
                     try {
                         const binaryString = atob(res.base64);
@@ -79,7 +86,7 @@
                         reject(e);
                     }
                 } else {
-                    reject(new Error(res.error));
+                    reject(new Error(res.error || 'Unknown error from background'));
                 }
             });
         });
@@ -916,7 +923,7 @@ function calculateHypeScore(metadata, replays) {
             
             // Load from extension bundle
             const script = document.createElement('script');
-            script.src = chrome.runtime.getURL('chart.min.js');
+            script.src = runtime.runtime.getURL('chart.min.js');
             script.onload = () => {
                 console.log('[TMX] Chart.js loaded successfully');
                 resolve();
@@ -1166,7 +1173,7 @@ function renderHypeSparkline(hypeData) { // Now accepts full hypeData object
             if (window.JSZip) return resolve();
             
             const script = document.createElement('script');
-            script.src = chrome.runtime.getURL('jszip.min.js');
+            script.src = runtime.runtime.getURL('jszip.min.js');
             script.onload = () => resolve();
             script.onerror = () => reject(new Error('Failed to load JSZip'));
             document.head.appendChild(script);

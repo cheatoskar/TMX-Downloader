@@ -2,82 +2,75 @@
    TMX EXTENSION - REDESIGNED TO MATCH SITE THEME
    ============================================================================ */
 
-/* Filter Menu Integration */
+/* Filter Panel Integration */
 #tmx-download-filter {
-  display: block;
-  padding: 10px 15px;
-  border-top: 1px solid var(--card-secondary-bordercolor);
-  margin-top: 8px;
-  background: var(--card-secondary-bgcolor);
-  border-radius: 4px;
-  transition: background 0.2s;
+    display: block !important;
+    padding: 10px 10px 15px !important;
+    border-top: 1px solid var(--card-secondary-bordercolor) !important;
+    margin-top: 8px !important;
+    background: var(--card-secondary-bgcolor);
+    border-radius: 4px;
+    transition: all 0.2s ease;
 }
 
 #tmx-download-filter:hover {
-  background: var(--dropdown-entry-color-hover);
+    background: var(--card-color);
 }
 
-/* Section Label */
-.tmx-section-label {
-  display: block;
-  margin-bottom: 8px;
-  font-weight: 600;
-  color: var(--main-textcolor);
-  font-size: 11px;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  opacity: 0.7;
+/* Header Label */
+#tmx-download-filter > span:first-child {
+    display: block !important;
+    margin-bottom: 10px !important;
+    font-weight: 600 !important;
+    color: var(--primary-color) !important;
+    font-size: 0.9em !important;
+    letter-spacing: 0.5px !important;
+    text-transform: uppercase;
 }
 
 /* Button Container */
-.tmx-btn-container {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
+#tmx-download-filter > div:nth-child(2) {
+    display: flex !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+    margin-bottom: 8px !important;
 }
 
-/* Main Download Button - Matches TMX Style */
+/* Download Button */
 .tmx-downloader-btn {
-  flex: 1;
-  padding: 8px 12px;
-  background: var(--header-gradient);
-  color: var(--main-textcolor);
-  border: 1px solid var(--card-secondary-bordercolor);
-  border-radius: 4px;
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 13px;
-  font-family: 'Source Sans Pro', Arial;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  transition: all 0.2s, box-shadow 0.2s;
-  box-shadow: 0 0 4px rgba(0, 0, 0, 0.1);
+    flex: 1 !important;
+    padding: 10px 16px !important;
+    border: 1px solid var(--primary-color) !important;
+    background: linear-gradient(135deg, var(--background-color), var(--secondary-color)) !important;
+    color: #fff !important;
+    border-radius: 4px !important;
+    cursor: pointer !important;
+    font-weight: 600 !important;
+    font-size: 14px !important;
+    transition: all 0.2s ease !important;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    font-family: 'Source Sans Pro', Arial !important;
 }
 
 .tmx-downloader-btn:hover {
-  background: rgba(255, 255, 255, 0.05);
-  box-shadow: inset 0 0 2px rgba(255, 255, 255, 0.3), inset 0 0 10px rgba(255, 255, 255, 0.1);
-  text-shadow: 0 1px 3px rgba(255, 255, 255, 0.5);
-  border-color: var(--primary-color);
+    background: linear-gradient(135deg, var(--secondary-color), var(--primary-color)) !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 4px 8px rgba(217, 40, 40, 0.3) !important;
 }
 
 .tmx-downloader-btn:active {
-  transform: translateY(1px);
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
+    transform: translateY(0) !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2) !important;
 }
 
 .tmx-downloader-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  transform: none;
-}
-
-.tmx-downloader-btn::before {
-  content: "⬇";
-  font-size: 14px;
+    opacity: 0.6 !important;
+    cursor: not-allowed !important;
+    transform: none !important;
 }
 
 /* Track Counter */
@@ -294,28 +287,108 @@
 
 /* Progress Bar - Matches TMX Loading Style */
 .tmx-progress {
-  height: 26px;
-  background: var(--card-secondary-bgcolor);
-  border-radius: 4px;
-  overflow: hidden;
-  margin: 10px 0;
-  border: 1px solid var(--card-secondary-bordercolor);
-  box-shadow: 0 0 4px rgba(0, 0, 0, 0.1);
+    height: 26px;
+    background: var(--card-secondary-bgcolor);
+    border-radius: 4px;
+    overflow: visible !important; /* Allow tire to extend beyond bounds */
+    margin: 10px 0;
+    border: 1px solid var(--card-secondary-bordercolor);
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.1);
+    position: relative; /* Critical for absolute positioning */
 }
 
+/* The actual progress fill */
 .tmx-progress-bar {
-  height: 100%;
-  background: var(--header-gradient);
-  width: 0%;
-  transition: width 0.4s cubic-bezier(0.22, 0.61, 0.36, 1);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--main-textcolor);
-  font-weight: bold;
-  font-size: 12px;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-  box-shadow: inset 0 0 2px rgba(255, 255, 255, 0.2);
+    height: 100%;
+    background: var(--header-gradient);
+    width: 0%;
+    transition: width 0.4s cubic-bezier(0.22, 0.61, 0.36, 1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--main-textcolor);
+    font-weight: bold;
+    font-size: 12px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+    box-shadow: inset 0 0 2px rgba(255, 255, 255, 0.2);
+    position: relative; /* For z-index control */
+}
+
+/* Tire/Racing Car Icon */
+.tmx-progress-tire {
+    position: absolute;
+    right: -16px; /* Half the width to center on edge */
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 32px; /* Size of the emoji */
+    z-index: 10; /* Above everything */
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+    transition: none; /* Let JS control movement */
+    user-select: none;
+    pointer-events: none;
+}
+
+/* Skid marks container - spans entire bar */
+.tmx-skid-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none; /* Don't block interactions */
+    overflow: hidden;
+    border-radius: 4px; /* Match parent */
+}
+
+/* Individual skid mark */
+.tmx-skid-mark {
+    position: absolute;
+    top: 70%; /* Position near bottom of tire */
+    left: 0;
+    width: 20px; /* Length of skid mark */
+    height: 3px;
+    background: linear-gradient(
+        to right,
+        rgba(30, 30, 30, 0.8) 0%,
+        rgba(50, 50, 50, 0.6) 50%,
+        transparent 100%
+    );
+    transform: skew(-20deg) translateY(-50%);
+    opacity: 0.7;
+    animation: skidFade 0.8s ease-out forwards;
+}
+
+@keyframes skidFade {
+    0% {
+        opacity: 0.8;
+        transform: skew(-20deg) translateY(-50%) scaleX(0.5);
+    }
+    100% {
+        opacity: 0.2;
+        transform: skew(-20deg) translateY(-50%) scaleX(1);
+    }
+}
+
+/* Dark theme skid mark adjustments */
+:root.theme-dark .tmx-skid-mark {
+    background: linear-gradient(
+        to right,
+        rgba(200, 200, 200, 0.4) 0%,
+        rgba(150, 150, 150, 0.3) 50%,
+        transparent 100%
+    );
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .tmx-progress-tire {
+        font-size: 28px;
+        right: -14px;
+    }
+    .tmx-skid-mark {
+        width: 15px;
+        height: 2px;
+    }
 }
 
 #progressText {
@@ -492,4 +565,549 @@
 input:focus-visible {
   outline: 2px solid var(--primary-color);
   outline-offset: 1px;
+}
+#exchangeSelector {
+    background: var(--card-secondary-bgcolor);
+    padding: 10px;
+    border-radius: 4px;
+    border: 1px solid var(--card-secondary-bordercolor);
+    margin-top: 8px;
+}
+
+#exchangeSelector .tmx-checkbox-group {
+    gap: 8px;
+}
+
+#exchangeSelector .tmx-checkbox-group label {
+    padding: 6px 8px;
+    font-size: 12px;
+}
+
+#exchangeSelector .tmx-checkbox-group label:hover {
+    background: var(--dropdown-entry-color-hover);
+}
+
+/* Multi-exchange mode indicator */
+#multiExchangeMode:checked + span {
+    color: var(--primary-color);
+    font-weight: 600;
+}
+
+/* Trackpack-Specific */
+#tmx-pack-download-filter {
+    display: block !important;
+    padding: 10px 10px 15px !important;
+    border-top: 1px solid var(--card-secondary-bordercolor) !important;
+    margin-top: 8px !important;
+    background: var(--card-secondary-bgcolor);
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+#tmx-pack-download-filter:hover {
+    background: var(--card-color);
+}
+
+/* Header Label */
+#tmx-pack-download-filter > span:first-child {
+    display: block !important;
+    margin-bottom: 10px !important;
+    font-weight: 600 !important;
+    color: var(--primary-color) !important;
+    font-size: 0.9em !important;
+    letter-spacing: 0.5px !important;
+    text-transform: uppercase;
+}
+
+/* Button Container */
+#tmx-pack-download-filter > div:nth-child(2) {
+    display: flex !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+    margin-bottom: 8px !important;
+}
+#tmx-pack-status {
+  font-size: 10px;
+  text-align: center;
+  padding: 4px 8px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  font-family: 'Source Sans Pro', Arial;
+  transition: all 0.2s;
+}
+
+#tmx-pack-status.loading {
+  color: #ffa500; /* orange */
+  background: rgba(255, 165, 0, 0.15);
+  border-color: #ffa500;
+}
+
+#tmx-pack-status.ready {
+  color: #28a745; /* green */
+  background: rgba(40, 167, 69, 0.15);
+  border-color: #28a745;
+}
+
+#tmx-pack-status.error {
+  color: #ff4444; /* red */
+  background: rgba(255, 68, 68, 0.15);
+  border-color: #ff4444;
+}
+#tmx-pack-modal {
+  display: none;
+  position: fixed;
+  z-index: 10000;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.85);
+  justify-content: center;
+  align-items: center;
+  animation: modalFadeIn 0.3s ease-out;
+  backdrop-filter: blur(4px);
+}
+.tmx-pack-modal-content h2::after { content: " Packs"; }  /* Visual diff */
+#packCounter {
+  font-size: 11px;
+  color: var(--main-textcolor);
+  background: var(--card-secondary-bgcolor);
+  padding: 6px 10px;
+  border-radius: 3px;
+  border: 1px solid var(--card-secondary-bordercolor);
+  min-width: 45px;
+  text-align: center;
+  font-weight: 600;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s;
+}
+
+#packCounter.loading {
+  color: var(--secondary-color);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+#packCounter.ready {
+  color: var(--primary-color);
+}
+
+#packCounter.error {
+  color: #ff6666;
+}
+/* ============================================================================
+   TMX TRACKSHOW ENHANCEMENT - INTEGRATED STATISTICS STYLING
+   ============================================================================ */
+
+/* Stats Card Base Styling */
+#tmx-stats-card {
+    margin-top: 20px;
+    animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Section Styling */
+.tmx-stat-section {
+    margin-bottom: 30px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--card-secondary-bordercolor);
+}
+
+.tmx-stat-section:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+}
+
+.tmx-stat-section h5 {
+    margin-bottom: 15px;
+    color: var(--primary-color);
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Custom Score Visualization */
+.tmx-score-container {
+    display: flex;
+    align-items: center;
+    gap: 30px;
+    padding: 20px;
+    background: var(--card-secondary-bgcolor);
+    border-radius: 8px;
+    border: 1px solid var(--card-secondary-bordercolor);
+}
+
+.tmx-score-circle {
+    flex-shrink: 0;
+    position: relative;
+}
+
+.tmx-score-circle svg {
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+}
+
+.tmx-score-breakdown {
+    flex: 1;
+    min-width: 0;
+}
+
+.tmx-score-breakdown h6 {
+    margin-bottom: 10px;
+    font-weight: 600;
+    color: var(--main-textcolor);
+}
+.tmx-score-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--card-secondary-bordercolor);
+    transition: background 0.2s;
+}
+
+.tmx-score-item:hover {
+    background: var(--dropdown-entry-color-hover);
+    margin: 0 -10px;
+    padding: 8px 10px;
+    border-radius: 4px;
+}
+
+.tmx-score-item:last-child {
+    border-bottom: none;
+}
+
+.tmx-score-label {
+    color: var(--main-textcolor);
+    font-weight: 500;
+    font-size: 14px;
+}
+
+.tmx-score-value {
+    color: var(--primary-color);
+    font-weight: 600;
+    font-size: 14px;
+}
+
+/* Statistics Grid */
+.tmx-stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
+}
+
+.tmx-stat-box {
+    background: var(--card-secondary-bgcolor);
+    padding: 15px;
+    border-radius: 6px;
+    text-align: center;
+    border: 1px solid var(--card-secondary-bordercolor);
+    transition: all 0.2s;
+}
+
+.tmx-stat-box:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    border-color: var(--primary-color);
+}
+
+.tmx-stat-label {
+    font-size: 12px;
+    color: var(--muted-textcolor);
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+}
+
+.tmx-stat-value {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--primary-color);
+    font-family: 'Courier New', monospace;
+}
+
+/* Chart Container */
+#tmx-time-chart {
+    max-height: 200px;
+    background: var(--card-secondary-bgcolor);
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid var(--card-secondary-bordercolor);
+}
+
+/* WR Timeline */
+.tmx-wr-timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.tmx-wr-entry {
+    display: flex;
+    align-items: center;
+    padding: 12px;
+    background: var(--card-secondary-bgcolor);
+    border-radius: 6px;
+    border: 1px solid var(--card-secondary-bordercolor);
+    transition: all 0.2s;
+}
+
+.tmx-wr-entry:hover {
+    transform: translateX(5px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border-color: var(--primary-color);
+}
+
+.tmx-wr-rank {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--primary-color);
+    width: 60px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.tmx-wr-entry:nth-child(1) .tmx-wr-rank {
+    color: #FFD700; /* Gold */
+}
+
+.tmx-wr-entry:nth-child(2) .tmx-wr-rank {
+    color: #C0C0C0; /* Silver */
+}
+
+.tmx-wr-entry:nth-child(3) .tmx-wr-rank {
+    color: #CD7F32; /* Bronze */
+}
+
+.tmx-wr-details {
+    flex: 1;
+    min-width: 0;
+}
+
+.tmx-wr-time {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--main-textcolor);
+    font-family: 'Courier New', monospace;
+}
+
+.tmx-wr-user {
+    font-size: 14px;
+    color: var(--main-textcolor);
+    margin-top: 2px;
+}
+
+.tmx-wr-date {
+    font-size: 12px;
+    color: var(--muted-textcolor);
+    margin-top: 2px;
+}
+
+/* Loading State */
+.tmx-loading-spinner {
+    display: inline-block;
+    width: 40px;
+    height: 40px;
+    border: 4px solid var(--card-secondary-bordercolor);
+    border-top-color: var(--primary-color);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .tmx-score-container {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .tmx-stat-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .tmx-wr-entry {
+        flex-wrap: wrap;
+    }
+    
+    .tmx-wr-rank {
+        width: 100%;
+        margin-bottom: 10px;
+    }
+}
+
+@media (max-width: 480px) {
+    .tmx-stat-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .tmx-score-breakdown {
+        font-size: 13px;
+    }
+}
+
+/* Dropdown Menu Styling */
+.dropdown-menu {
+    min-width: 220px;
+}
+
+.dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    transition: all 0.2s;
+}
+
+.dropdown-item:hover {
+    background: var(--dropdown-entry-color-hover);
+    padding-left: 20px;
+}
+
+.dropdown-item i {
+    width: 16px;
+    text-align: center;
+}
+
+/* Refresh Button Styling */
+#tmx-refresh-stats {
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+#tmx-refresh-stats:hover {
+    color: var(--primary-color);
+}
+
+#tmx-refresh-stats i {
+    transition: transform 0.3s;
+}
+
+#tmx-refresh-stats:hover i {
+    transform: rotate(180deg);
+}
+
+/* Dark Theme Adjustments */
+:root.theme-dark .tmx-score-container {
+    background: var(--card-color);
+}
+
+:root.theme-dark .tmx-stat-box {
+    background: var(--card-color);
+}
+
+:root.theme-dark .tmx-wr-entry {
+    background: var(--card-color);
+}
+
+:root.theme-dark #tmx-time-chart {
+    background: var(--card-color);
+}
+
+/* Score Percentage Animation */
+.tmx-score-circle circle:nth-child(2) {
+    transition: stroke-dasharray 1s ease-out;
+    animation: drawCircle 1s ease-out;
+}
+
+@keyframes drawCircle {
+    from {
+        stroke-dasharray: 0 339.292;
+    }
+}
+
+/* Tooltip for Score Items */
+.tmx-score-item {
+    position: relative;
+}
+
+.tmx-score-item::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 8px);
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.9);
+    color: white;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 11px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s, transform 0.2s;
+    z-index: 1000;
+}
+
+.tmx-score-item::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 2px);
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: rgba(0, 0, 0, 0.9);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+}
+
+.tmx-score-item:hover::after {
+    opacity: 1;
+    transform: translateX(-50%) translateY(-2px);
+}
+
+.tmx-score-item:hover::before {
+    opacity: 1;
+}
+.btn-group {
+    position: relative !important;
+}
+
+#tmx-tools-dropdown {
+    position: absolute !important;
+    top: calc(100% + 5px) !important;
+    right: 0 !important;
+    left: auto !important;
+    z-index: 9999 !important;
+    min-width: 220px;
+    background: var(--main-bgcolor);
+    border: 1px solid var(--card-secondary-bordercolor);
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    padding: 8px 0;
+    margin: 0;
+}
+
+#tmx-tools-dropdown .dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    color: var(--main-textcolor);
+    text-decoration: none;
+    transition: all 0.2s;
+    cursor: pointer;
+}
+
+#tmx-tools-dropdown .dropdown-item:hover {
+    background: var(--dropdown-entry-color-hover);
+    padding-left: 20px;
+}
+
+#tmx-tools-dropdown .dropdown-divider {
+    margin: 8px 0;
+    border-top: 1px solid var(--card-secondary-bordercolor);
 }

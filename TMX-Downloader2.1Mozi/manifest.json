@@ -1,22 +1,26 @@
 {
   "manifest_version": 2,
   "name": "TMX Universal Track Downloader",
-  "version": "1.2",
-  "description": "Bulk download tracks from all TMX exchanges",
+  "version": "1.3.1",
+  "description": "Bulk download tracks and trackpacks from all TMX exchanges",
+
   "permissions": [
     "activeTab",
     "downloads",
     "tabs",
+    "storage",
     "*://tmnf.exchange/*",
     "*://tmuf.exchange/*",
     "*://original.tm-exchange.com/*",
     "*://sunrise.tm-exchange.com/*",
     "*://nations.tm-exchange.com/*"
   ],
+
   "background": {
     "scripts": ["background.js"],
     "persistent": false
   },
+
   "content_scripts": [
     {
       "matches": [
@@ -27,19 +31,42 @@
         "*://nations.tm-exchange.com/tracksearch*"
       ],
       "css": ["styles.css"],
-      "js": ["jszip.min.js", "content.js"],
-      "run_at": "document_start",
-      "all_frames": false
+      "js": ["jszip.min.js", "chart.min.js", "content.js"],
+      "run_at": "document_end"
+    },
+    {
+      "matches": [
+        "*://tmnf.exchange/trackpacksearch*",
+        "*://tmuf.exchange/trackpacksearch*",
+        "*://original.tm-exchange.com/trackpacksearch*",
+        "*://sunrise.tm-exchange.com/trackpacksearch*",
+        "*://nations.tm-exchange.com/trackpacksearch*"
+      ],
+      "css": ["styles.css"],
+      "js": ["jszip.min.js", "chart.min.js", "trackpack.js"],
+      "run_at": "document_end"
+    },
+    {
+      "matches": [
+        "*://tmnf.exchange/trackshow/*",
+        "*://tmuf.exchange/trackshow/*",
+        "*://original.tm-exchange.com/trackshow/*",
+        "*://sunrise.tm-exchange.com/trackshow/*",
+        "*://nations.tm-exchange.com/trackshow/*"
+      ],
+      "css": ["styles.css"],
+      "js": ["jszip.min.js", "chart.min.js", "trackshow.js"],
+      "run_at": "document_end"
     }
   ],
-"browser_specific_settings": {
+
+  "browser_specific_settings": {
     "gecko": {
       "id": "tmx-downloader@emptyfornow.com",
-      "data_collection_permissions": {
-        "required": ["none"]
-      }
+      "strict_min_version": "57.0"
     }
   },
+
   "icons": {
     "128": "icons/icon128.png"
   }
