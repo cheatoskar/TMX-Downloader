@@ -110,12 +110,15 @@ TMX Downloader is a Chrome extension—easy to install and sideload for testing.
 ## 📸 Screenshots
 
 ### Filters Dropdown Integration
-![Filters UI](https://github.com/cheatoskar/TMX-Downloader/blob/main/View.png)
+![Filters UI](https://github.com/cheatoskar/TMX-Downloader/blob/main/Screenshots/View.png)
 *(Button appears seamlessly below "FILTERS" header.)*
 
 ### Download Modal
-![Modal](https://github.com/cheatoskar/TMX-Downloader/blob/main/Modal.png)
+![Modal](https://github.com/cheatoskar/TMX-Downloader/blob/main/Screenshots/Modal.png)
 *(Options, progress bar with tire 🏁, and buttons.)*
+
+### Stats Modal
+![Modal](https://github.com/cheatoskar/TMX-Downloader/blob/main/Screenshots/Stats.png)
 
 ## 🔍 How It Works (Under the Hood)
 
