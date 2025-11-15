@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "TMX Universal Track Downloader",
+  "version": "1.2.1",
+  "description": "Bulk download tracks from all TMX exchanges",
+  "permissions": ["activeTab", "downloads", "scripting"],
+  "host_permissions": [
+    "*://tmnf.exchange/*",
+    "*://tmuf.exchange/*",
+    "*://original.tm-exchange.com/*",
+    "*://sunrise.tm-exchange.com/*",
+    "*://nations.tm-exchange.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://tmnf.exchange/tracksearch*",
+        "*://tmuf.exchange/tracksearch*",
+        "*://original.tm-exchange.com/tracksearch*",
+        "*://sunrise.tm-exchange.com/tracksearch*",
+        "*://nations.tm-exchange.com/tracksearch*"
+      ],
+      "css": ["styles.css"],
+      "js": ["jszip.min.js", "content.js"],
+      "run_at": "document_end"
+    }
+  ]
+}
