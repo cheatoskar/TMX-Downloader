@@ -1,16 +1,16 @@
 // ============================================================================
-// PART 1: EARLY INJECTION - Runs before page scripts
+// PART 1: EARLY INJECTION - Runs before page scripts (for /api/trackpacks)
 // ============================================================================
 (function() {
     'use strict';
     
     chrome.runtime.sendMessage({action: 'injectFetchOverride'}, (response) => {
         if (chrome.runtime.lastError) {
-            console.error('[TMX] Message error:', chrome.runtime.lastError);
+            console.error('[TMX-PACK] Message error:', chrome.runtime.lastError);
         } else if (response.success) {
-            console.log('[TMX] ✅ Fetch interceptor installed via background');
+            console.log('[TMX-PACK] ✅ Fetch interceptor installed via background');
         } else {
-            console.error('[TMX] ❌ Failed to inject interceptor:', response.error);
+            console.error('[TMX-PACK] ❌ Failed to inject interceptor:', response.error);
         }
     });
 })();
@@ -36,73 +36,78 @@
     };
 
     // ============================================================================
-    // CONFIGURATION
+    // CONFIGURATION (All exchanges for packs)
     // ============================================================================
     const EXCHANGES = {
         'tmnf.exchange': {
             name: 'TMNF-X',
-            apiBase: 'https://tmnf.exchange/api/tracks',
-            trackpackApiBase: 'https://tmnf.exchange/api/trackpacks'
+            apiBase: 'https://tmnf.exchange/api/trackpacks',
+            tracksApiBase: 'https://tmnf.exchange/api/tracks',
+            host: 'https://tmnf.exchange'
         },
         'tmuf.exchange': {
             name: 'TMUF-X',
-            apiBase: 'https://tmuf.exchange/api/tracks',
-            trackpackApiBase: 'https://tmuf.exchange/api/trackpacks'
+            apiBase: 'https://tmuf.exchange/api/trackpacks',
+            tracksApiBase: 'https://tmuf.exchange/api/tracks',
+            host: 'https://tmuf.exchange'
         },
         'original.tm-exchange.com': {
             name: 'TMO-X',
-            apiBase: 'https://original.tm-exchange.com/api/tracks',
-            trackpackApiBase: 'https://original.tm-exchange.com/api/trackpacks'
+            apiBase: 'https://original.tm-exchange.com/api/trackpacks',
+            tracksApiBase: 'https://original.tm-exchange.com/api/tracks',
+            host: 'https://original.tm-exchange.com'
         },
         'sunrise.tm-exchange.com': {
             name: 'TMS-X',
-            apiBase: 'https://sunrise.tm-exchange.com/api/tracks',
-            trackpackApiBase: 'https://sunrise.tm-exchange.com/api/trackpacks'
+            apiBase: 'https://sunrise.tm-exchange.com/api/trackpacks',
+            tracksApiBase: 'https://sunrise.tm-exchange.com/api/tracks',
+            host: 'https://sunrise.tm-exchange.com'
         },
         'nations.tm-exchange.com': {
             name: 'TMN-X',
-            apiBase: 'https://nations.tm-exchange.com/api/tracks',
-            trackpackApiBase: 'https://nations.tm-exchange.com/api/trackpacks'
+            apiBase: 'https://nations.tm-exchange.com/api/trackpacks',
+            tracksApiBase: 'https://nations.tm-exchange.com/api/tracks',
+            host: 'https://nations.tm-exchange.com'
         }
     };
 
-    // 🆕 Proxy helpers
+    // Proxy helpers
     async function proxyFetchJson(url) {
-    return new Promise((resolve, reject) => {
-        chrome.runtime.sendMessage({action: 'fetchApi', url}, (res) => {
-        if (chrome.runtime.lastError) {
-            reject(chrome.runtime.lastError);
-        } else if (res.success) {
-            resolve(res.data);
-        } else {
-            reject(new Error(res.error));
-        }
+        return new Promise((resolve, reject) => {
+            chrome.runtime.sendMessage({action: 'fetchApi', url}, (res) => {
+                if (chrome.runtime.lastError) {
+                    reject(chrome.runtime.lastError);
+                } else if (res.success) {
+                    resolve(res.data);
+                } else {
+                    reject(new Error(res.error));
+                }
+            });
         });
-    });
     }
 
     async function proxyFetchBinary(url) {
-    return new Promise((resolve, reject) => {
-        chrome.runtime.sendMessage({action: 'fetchBinary', url}, (res) => {
-        if (chrome.runtime.lastError) {
-            reject(chrome.runtime.lastError);
-        } else if (res.success) {
-            try {
-            const binaryString = atob(res.base64);
-            const bytes = new Uint8Array(binaryString.length);
-            for (let i = 0; i < binaryString.length; i++) {
-                bytes[i] = binaryString.charCodeAt(i);
-            }
-            const blob = new Blob([bytes.buffer], {type: 'application/octet-stream'});
-            resolve(blob);
-            } catch (e) {
-            reject(e);
-            }
-        } else {
-            reject(new Error(res.error));
-        }
+        return new Promise((resolve, reject) => {
+            chrome.runtime.sendMessage({action: 'fetchBinary', url}, (res) => {
+                if (chrome.runtime.lastError) {
+                    reject(chrome.runtime.lastError);
+                } else if (res.success) {
+                    try {
+                        const binaryString = atob(res.base64);
+                        const bytes = new Uint8Array(binaryString.length);
+                        for (let i = 0; i < binaryString.length; i++) {
+                            bytes[i] = binaryString.charCodeAt(i);
+                        }
+                        const blob = new Blob([bytes.buffer], {type: 'application/octet-stream'});
+                        resolve(blob);
+                    } catch (e) {
+                        reject(e);
+                    }
+                } else {
+                    reject(new Error(res.error));
+                }
+            });
         });
-    });
     }
 
     // ============================================================================
@@ -113,7 +118,7 @@
         const hostname = window.location.hostname;
         TMX_STATE.currentExchange = EXCHANGES[hostname];
         if (!TMX_STATE.currentExchange) {
-            console.error('[TMX] Unsupported hostname:', hostname);
+            console.error('[TMX-PACK] Unsupported hostname:', hostname);
         }
         return TMX_STATE.currentExchange;
     }
@@ -143,7 +148,7 @@
 
     function getApiUrlSafe() {
         // METHOD 1: Check DOM attribute 
-        const domUrl = document.documentElement.getAttribute('data-tmx-api-url');
+        const domUrl = document.documentElement.getAttribute('data-tmx-pack-api-url');
         if (domUrl) {
             try {
                 new URL(domUrl);
@@ -151,19 +156,19 @@
                 TMX_STATE.hasCapturedUrl = true;
                 return domUrl;
             } catch (e) {
-                console.error('[TMX] Invalid DOM URL:', domUrl);
+                console.error('[TMX-PACK] Invalid DOM URL:', domUrl);
             }
         }
         
         // METHOD 2: Check window property
-        if (window.__tmx_lastApiUrl) {
+        if (window.__tmx_pack_lastApiUrl) {
             try {
-                new URL(window.__tmx_lastApiUrl);
-                TMX_STATE.lastApiUrl = window.__tmx_lastApiUrl;
+                new URL(window.__tmx_pack_lastApiUrl);
+                TMX_STATE.lastApiUrl = window.__tmx_pack_lastApiUrl;
                 TMX_STATE.hasCapturedUrl = true;
-                return window.__tmx_lastApiUrl;
+                return window.__tmx_pack_lastApiUrl;
             } catch (e) {
-                console.error('[TMX] Invalid window URL:', window.__tmx_lastApiUrl);
+                console.error('[TMX-PACK] Invalid window URL:', window.__tmx_pack_lastApiUrl);
             }
         }
         
@@ -173,7 +178,7 @@
                 new URL(TMX_STATE.lastApiUrl);
                 return TMX_STATE.lastApiUrl;
             } catch (e) {
-                console.error('[TMX] Invalid stored URL:', TMX_STATE.lastApiUrl);
+                console.error('[TMX-PACK] Invalid stored URL:', TMX_STATE.lastApiUrl);
                 TMX_STATE.hasCapturedUrl = false;
                 TMX_STATE.lastApiUrl = null;
             }
@@ -188,7 +193,7 @@
 
     function generateZipName(exchangeName) {
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        return `${sanitizeFilename(exchangeName)}_Tracks_${timestamp}.zip`;
+        return `${sanitizeFilename(exchangeName)}_Trackpacks_${timestamp}.zip`;
     }
 
     function loadJSZip() {
@@ -214,18 +219,19 @@
         
         try {
             const urlObj = new URL(apiUrl);
-            urlObj.searchParams.set('count', '1000');
-            const data = await proxyFetchJson(urlObj.toString());  // Returns JSON data directly
+            urlObj.searchParams.set('count', '40');
+            const data = await proxyFetchJson(urlObj.toString());
             const results = data.Results || [];
             const more = data.More || false;
-            return more ? '1000+' : results.length.toString();
+            return more ? '40+' : results.length.toString();
         } catch (e) {
-            console.error('[TMX] Error fetching real count:', e);
+            console.error('[TMX-PACK] Error fetching real count:', e);
             return 'Error';
         }
     }
+
     async function updateStatus(loading = false) {
-        const status = document.getElementById('tmx-status');
+        const status = document.getElementById('tmx-pack-status');
         
         if (!status) return;
         const apiUrl = getApiUrlSafe();
@@ -239,10 +245,10 @@
         }
         
         if (apiUrl) {
-            // Trigger fetch if theres no have a real count yet
+            // Trigger fetch if no real count yet
             if (!TMX_STATE.realCount && !TMX_STATE.isFetchingCount) {
                 TMX_STATE.isFetchingCount = true;
-                status.textContent = '⏳ Getting track count...';
+                status.textContent = '⏳ Getting pack count...';
                 status.classList.add('loading');
                 
                 fetchRealCount().then(displayCount => {
@@ -261,20 +267,20 @@
             let displayCount = TMX_STATE.realCount || '0';
             if (displayCount === 'Error') displayCount = '0';
             
-            // Fallback parsing if still no real count
+            // Fallback parsing
             if (displayCount === '0' && !TMX_STATE.realCount) {
                 try {
                     const urlObj = new URL(apiUrl);
                     const countParam = parseInt(urlObj.searchParams.get('count'), 10) || 0;
-                    displayCount = countParam > 1000 ? '1000+' : countParam.toString();
+                    displayCount = countParam > 40 ? '40+' : countParam.toString();
                 } catch (e) {
-                    console.error('[TMX] Error parsing count from URL');
+                    console.error('[TMX-PACK] Error parsing count from URL');
                     displayCount = '0';
                 }
             }
             
             // Update UI
-            status.textContent = `Search loaded (${displayCount} tracks)`;
+            status.textContent = `Search loaded (${displayCount} packs)`;
             status.classList.add('ready');
         } else {
             status.textContent = '❌ Perform search';
@@ -282,9 +288,9 @@
         }
     }
 
-   function createUI(dropdown) {
+    function createUI(dropdown) {
         // Remove old UI if exists
-        const oldUI = document.getElementById('tmx-download-filter');
+        const oldUI = document.getElementById('tmx-pack-download-filter');
         if (oldUI) {
             oldUI.remove();
         }
@@ -292,28 +298,28 @@
         // Verify correct dropdown
         const filterHeader = dropdown.querySelector('.filterselector-header');
         if (!filterHeader || !filterHeader.textContent.includes('FILTERS')) {
-            console.log('[TMX] Skipping UI creation - not the filter dropdown');
+            console.log('[TMX-PACK] Skipping UI creation - not the filter dropdown');
             return;
         }
         
-        console.log('[TMX] 🎯 Creating UI in filter dropdown');
+        console.log('[TMX-PACK] 🎯 Creating UI in filter dropdown');
         
         const downloadFilter = document.createElement('div');
-        downloadFilter.id = 'tmx-download-filter';
+        downloadFilter.id = 'tmx-pack-download-filter';
         
         const label = document.createElement('span');
         label.className = 'tmx-section-label';
-        label.textContent = 'DOWNLOADER';
+        label.textContent = 'TRACKPACK DOWNLOADER';
         
         const btnContainer = document.createElement('div');
         btnContainer.className = 'tmx-btn-container';
         
         const downloadBtn = document.createElement('button');
         downloadBtn.className = 'tmx-downloader-btn';
-        downloadBtn.innerHTML = 'Download Tracks';
+        downloadBtn.innerHTML = 'Download Trackpacks';
  
         const status = document.createElement('div');
-        status.id = 'tmx-status';
+        status.id = 'tmx-pack-status';
         status.className = 'error';
         status.textContent = '❌ Perform search';
                 
@@ -332,23 +338,23 @@
         // Button click handler
         downloadBtn.addEventListener('click', () => {
             const apiUrl = getApiUrlSafe();
-            console.log('[TMX] Button clicked, current URL:', apiUrl);
+            console.log('[TMX-PACK] Button clicked, current URL:', apiUrl);
             
             if (!apiUrl) {
                 alert('❌ No API URL found!\n\nPlease perform a search first and wait for results to load.');
                 return;
             }
             
-            const modal = document.getElementById('tmx-modal');
+            const modal = document.getElementById('tmx-pack-modal');
             if (modal) {
                 modal.style.display = 'flex';
                 updateStatus();
             } else {
-                console.error('[TMX] Modal not found!');
+                console.error('[TMX-PACK] Modal not found!');
             }
         });
         
-        console.log('[TMX] ✅ UI created successfully');
+        console.log('[TMX-PACK] ✅ UI created successfully');
         updateStatus();
         
         return { downloadBtn, status };
@@ -356,49 +362,26 @@
 
     function createModal() {
         // Remove old modal if exists
-        const oldModal = document.getElementById('tmx-modal');
+        const oldModal = document.getElementById('tmx-pack-modal');
         if (oldModal) {
             oldModal.remove();
         }
         
         const exchange = getCurrentExchange();
         if (!exchange) {
-            console.error('[TMX] No exchange configured');
+            console.error('[TMX-PACK] No exchange configured');
             return;
         }
         
         const modal = document.createElement('div');
-        modal.id = 'tmx-modal';
+        modal.id = 'tmx-pack-modal';
         modal.className = 'tmx-modal';
         
         modal.innerHTML = `
             <div class="tmx-modal-content">
-                <h2><span id="exchange-name">${exchange.name}</span> Track Downloader</h2>
+                <h2><span id="exchange-name">${exchange.name}</span> Trackpack Downloader</h2>
                 
-                <!-- Download Options -->
-                <div class="tmx-option-group">
-                    <label>📥 Download Options</label>
-                    <div class="tmx-checkbox-group">
-                        <label class="tmx-interactive">
-                            <input type="checkbox" id="shuffleTracks">
-                            <span>Shuffle track order</span>
-                        </label>
-                        <small style="color: var(--muted-textcolor); font-size: 11px; display: block; margin-top: 4px;">
-                            Downloads the first N maps — just in a random order.
-                        </small>
-
-                        <label class="tmx-interactive">
-                            <input type="checkbox" id="randomSelection">
-                            <span>Random selection</span>
-                        </label>
-                        <small style="color: var(--muted-textcolor); font-size: 11px; display: block; margin-top: 4px;">
-                            Loads all results and picks N maps at random from the full set.
-                        </small>
-                    </div>
-                    <small style="color: var(--muted-textcolor); font-size: 10px; display: block; margin-top: 8px; font-style: italic;">
-                        Note: Only one option applies at a time (shuffle takes priority).
-                    </small>
-                </div>
+                <!-- Multi-Exchange Search -->
                 <div class="tmx-option-group">
                     <label>🌐 Multi-Exchange Search</label>
                     <div class="tmx-checkbox-group">
@@ -438,29 +421,17 @@
                     </div>
                 </div>
                 
-                <!-- Track Count -->
+                <!-- Pack Count -->
                 <div class="tmx-option-group">
-                    <label>🔢 Number of Tracks</label>
+                    <label>🔢 Number of Trackpacks</label>
                     <input 
                         type="number" 
-                        id="trackCount" 
-                        placeholder="Leave empty to download all tracks" 
+                        id="packCount" 
+                        placeholder="Leave empty to download all packs" 
                         min="1"
                     >
-                </div>
-                
-                <!-- Start Position -->
-                <div class="tmx-option-group">
-                    <label>📍 Start Position</label>
-                    <input 
-                        type="number" 
-                        id="startIndex" 
-                        placeholder="0" 
-                        min="0" 
-                        value="0"
-                    >
                     <small style="color: var(--muted-textcolor); font-size: 11px; display: block; margin-top: 4px;">
-                        Skip the first N tracks (0 = start from beginning)
+                        Downloads the top N trackpacks from search and all their tracks.
                     </small>
                 </div>
                 
@@ -507,7 +478,7 @@
         document.body.appendChild(modal);
         
         // Event listeners
-        document.getElementById('startDownload').addEventListener('click', handleDownload);
+        document.getElementById('startDownload').addEventListener('click', handlePackDownload);
         document.getElementById('cancelDownload').addEventListener('click', handleCancel);
         document.getElementById('multiExchangeMode').addEventListener('change', (e) => {
             const selector = document.getElementById('exchangeSelector');
@@ -529,7 +500,7 @@
             }
         });
         
-        console.log('[TMX] ✅ Modal created and attached');
+        console.log('[TMX-PACK] ✅ Modal created and attached');
         return modal;
     }
 
@@ -537,12 +508,12 @@
     // DOWNLOAD LOGIC
     // ============================================================================
     
-    async function handleDownload() {
+    async function handlePackDownload() {
         const apiUrl = getApiUrlSafe();
         const multiMode = document.getElementById('multiExchangeMode')?.checked;
         
         if (!multiMode && !apiUrl) {
-            alert('❌ No API URL available!\n\nPlease:\n1. Click "Apply Filters" or "Search"\n2. Wait for results to load\n3. Try again');
+            alert('❌ No API URL available!\n\nPlease:\n1. Perform a search\n2. Wait for results to load\n3. Try again');
             return;
         }
         
@@ -554,21 +525,16 @@
             return;
         }
         
-        // Get download options
-        const shuffleTracks = document.getElementById('shuffleTracks').checked;
-        const randomSelection = document.getElementById('randomSelection').checked;
-        const trackCountInput = document.getElementById('trackCount').value;
-        const startIndex = parseInt(document.getElementById('startIndex').value || '0', 10);
+        // Get options
+        const packCountInput = document.getElementById('packCount').value;
+        const maxPacks = packCountInput ? parseInt(packCountInput, 10) : Infinity;
         const createZip = document.getElementById('createZip').checked;
         const includeMetadata = document.getElementById('includeMetadata').checked;
         
-        console.log('[TMX] 🚀 Starting download');
-        console.log('[TMX] 🌐 Exchanges:', selectedExchanges.map(e => e.name).join(', '));
-        console.log('[TMX] 📋 Options:', { 
-            shuffleTracks, 
-            randomSelection, 
-            trackCount: trackCountInput || 'all', 
-            startIndex, 
+        console.log('[TMX-PACK] 🚀 Starting pack download');
+        console.log('[TMX-PACK] 🌐 Exchanges:', selectedExchanges.map(e => e.name).join(', '));
+        console.log('[TMX-PACK] 📋 Options:', { 
+            maxPacks: packCountInput || 'all', 
             createZip, 
             includeMetadata 
         });
@@ -599,7 +565,7 @@
                 await loadJSZip();
                 zip = new JSZip();
             } catch (error) {
-                console.error('[TMX] ❌ Failed to load JSZip:', error);
+                console.error('[TMX-PACK] ❌ Failed to load JSZip:', error);
                 alert('❌ Error loading ZIP library. Please try again later.');
                 resetDownloadUI();
                 return;
@@ -607,16 +573,15 @@
         }
         
         let allDownloadedTracks = [];
+        let allPacks = [];
         
         try {
-            const maxTrackCount = trackCountInput ? parseInt(trackCountInput, 10) : Infinity;
-            
             // Process each exchange
             for (let i = 0; i < selectedExchanges.length; i++) {
                 if (signal.aborted) break;
                 
                 const exchange = selectedExchanges[i];
-                console.log(`[TMX] 📡 Processing ${exchange.name} (${i + 1}/${selectedExchanges.length})`);
+                console.log(`[TMX-PACK] 📡 Processing ${exchange.name} (${i + 1}/${selectedExchanges.length})`);
                 
                 // Build API URL for this exchange
                 let currentApiUrl;
@@ -636,32 +601,56 @@
                 }
                 
                 updateProgress(
-                    (i / selectedExchanges.length) * 100,
-                    `Fetching from ${exchange.name}...`
+                    (i / selectedExchanges.length) * 50,
+                    `Fetching packs from ${exchange.name}...`
                 );
                 
-                // Fetch tracks from this exchange
-                const effectiveMaxFetch = maxTrackCount === Infinity ? Infinity : (startIndex + maxTrackCount);
-                let exchangeTracks = await fetchAllTracks(currentApiUrl, effectiveMaxFetch, signal);
+                // Fetch packs from this exchange
+                const exchangePacks = await fetchAllPacks(currentApiUrl, Infinity, signal);
+                allPacks.push(...exchangePacks.map(p => ({...p, exchange})));
                 
-                console.log(`[TMX] 📊 Fetched ${exchangeTracks.length} tracks from ${exchange.name}`);
+                console.log(`[TMX-PACK] 📦 Fetched ${exchangePacks.length} packs from ${exchange.name}`);
+            }
+            
+            // Apply maxPacks limit to total
+            allPacks = allPacks.slice(0, maxPacks);
+            
+            if (allPacks.length === 0) {
+                alert('❌ No trackpacks found!');
+                return;
+            }
+            
+            updateProgress(50, `Found ${allPacks.length} packs total. Downloading tracks...`);
+            
+            // Process each pack
+            for (let j = 0; j < allPacks.length; j++) {
+                if (signal.aborted) break;
+            
+                const { exchange, ...pack } = allPacks[j]; 
+                console.log(`[TMX-PACK] 📦 Processing ${pack.PackName || 'Unknown'} from ${exchange.name} (${j + 1}/${allPacks.length})`);
+            
+                // Fetch pack details
+                const packDetails = await fetchPackDetails(pack.PackId, exchange);
+                const packFolder = sanitizeFilename(packDetails.PackName || `Pack_${pack.PackId}`);
                 
-                if (exchangeTracks.length === 0) {
-                    console.log(`[TMX] ⚠️ No tracks found on ${exchange.name}`);
+                // Fetch tracks for this pack
+                const packTracks = await fetchPackTracks(pack.PackId, signal, exchange);
+                
+                console.log(`[TMX-PACK] 📊 Found ${packTracks.length} tracks in ${packFolder}`);
+                
+                if (packTracks.length === 0) {
+                    console.log(`[TMX-PACK] ⚠️ No tracks in pack ${pack.PackId}`);
                     continue;
                 }
                 
-                // Apply startIndex and limit
-                exchangeTracks = exchangeTracks.slice(startIndex, startIndex + maxTrackCount);
-                
-                // Download tracks from this exchange
+                // Download tracks from this pack
                 updateProgress(
-                    ((i + 0.5) / selectedExchanges.length) * 100,
-                    `Downloading from ${exchange.name}: 0/${exchangeTracks.length}`
+                    50 + ((j / allPacks.length) * 50),
+                    `Downloading ${packFolder}: 0/${packTracks.length}`
                 );
                 
                 const CONCURRENT_DOWNLOADS = 10;
-                const downloadQueue = [...exchangeTracks];
+                const downloadQueue = [...packTracks];
                 const activeDownloads = new Set();
                 let downloadedCount = 0;
                 
@@ -669,41 +658,38 @@
                     if (signal.aborted) throw new DOMException('Download aborted', 'AbortError');
                     
                     try {
-                        const fileUrl = `${exchange.apiBase.replace('/api/tracks', '')}/trackgbx/${track.TrackId}`;
-                        
-                        // 🆕 Use proxy for binary to bypass CORS
+                        const fileUrl = `${exchange.host}/trackgbx/${track.TrackId}`;
                         const blob = await proxyFetchBinary(fileUrl);
-                        
                         const filename = sanitizeFilename(`${track.TrackName} by ${track.Uploader?.Name || 'Unknown'}.gbx`);
                         
                         if (createZip) {
                             // Create exchange-specific folder
-                            const folderPath = `${exchange.name}/${filename}`;
+                            const folderPath = `${exchange.name}/${packFolder}/${filename}`;
                             zip.file(folderPath, blob);
                             
                             if (includeMetadata) {
-                                const metaPath = `${exchange.name}/${filename.replace('.gbx', '.json')}`;
-                                zip.file(metaPath, JSON.stringify({...track, exchange: exchange.name}));
+                                const metaPath = `${exchange.name}/${packFolder}/${filename.replace('.gbx', '.json')}`;
+                                zip.file(metaPath, JSON.stringify({...track, pack: packDetails}));
                             }
                         } else {
                             const url = URL.createObjectURL(blob);
                             const a = document.createElement('a');
                             a.href = url;
-                            a.download = `[${exchange.name}] ${filename}`;
+                            a.download = `[${exchange.name}] [${packFolder}] ${filename}`;
                             a.click();
                             URL.revokeObjectURL(url);
                         }
                         
-                        allDownloadedTracks.push({...track, exchange: exchange.name});
+                        allDownloadedTracks.push({...track, pack: packDetails, exchange: exchange.name});
                         downloadedCount++;
                         
                         updateProgress(
-                            ((i + (downloadedCount / exchangeTracks.length)) / selectedExchanges.length) * 100,
-                            `${exchange.name}: ${downloadedCount}/${exchangeTracks.length} tracks`
+                            50 + (((j + (downloadedCount / packTracks.length)) / allPacks.length) * 50),
+                            `${exchange.name} / ${packFolder}: ${downloadedCount}/${packTracks.length} tracks`
                         );
                     } catch (error) {
                         if (error.name === 'AbortError') throw error;
-                        console.error(`[TMX] ⚠️ Error downloading track ${track.TrackId}:`, error);
+                        console.error(`[TMX-PACK] ⚠️ Error downloading track ${track.TrackId}:`, error);
                     }
                 }
                 
@@ -727,30 +713,20 @@
                 }
             }
             
-            // Apply shuffle/random to final collection
-            if (shuffleTracks && allDownloadedTracks.length > 0) {
-                console.log('[TMX] 🔀 Shuffling final track collection');
-            } else if (randomSelection && maxTrackCount !== Infinity && allDownloadedTracks.length > maxTrackCount) {
-                allDownloadedTracks = shuffleArray(allDownloadedTracks).slice(0, maxTrackCount);
-                console.log(`[TMX] 🎲 Random selection: ${allDownloadedTracks.length} tracks`);
-            }
-            
-            // Save metadata
-            if (createZip && includeMetadata && allDownloadedTracks.length > 0) {
-                zip.file('_all_metadata.json', JSON.stringify(allDownloadedTracks, null, 2));
-            }
-            
             updateProgress(100, 'Finishing...');
             
             // Generate ZIP
             if (createZip && allDownloadedTracks.length > 0) {
+                if (includeMetadata) {
+                    zip.file('_all_metadata.json', JSON.stringify(allDownloadedTracks, null, 2));
+                }
                 const content = await zip.generateAsync({ type: 'blob' });
                 const url = URL.createObjectURL(content);
                 const a = document.createElement('a');
                 a.href = url;
                 
                 const zipName = multiMode 
-                    ? `Best_of_All_TMX_${new Date().toISOString().replace(/[:.]/g, '-')}.zip`
+                    ? `All_TMX_Trackpacks_${new Date().toISOString().replace(/[:.]/g, '-')}.zip`
                     : generateZipName(selectedExchanges[0].name);
                 
                 a.download = zipName;
@@ -758,12 +734,12 @@
                 URL.revokeObjectURL(url);
             }
             
-            console.log('[TMX] ✅ Download complete');
-            alert(`✅ Download complete!\n${allDownloadedTracks.length} tracks downloaded from ${selectedExchanges.length} exchange(s).`);
+            console.log('[TMX-PACK] ✅ Download complete');
+            alert(`✅ Download complete!\n${allDownloadedTracks.length} tracks from ${allPacks.length} packs across ${selectedExchanges.length} exchange(s).`);
             
         } catch (error) {
             if (error.name !== 'AbortError') {
-                console.error('[TMX] ❌ Download failed:', error);
+                console.error('[TMX-PACK] ❌ Download failed:', error);
                 alert(`❌ Download failed:\n${error.message}`);
             }
         } finally {
@@ -777,12 +753,12 @@
                     const url = URL.createObjectURL(content);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = 'Best_of_All_TMX_partial.zip';
+                    a.download = 'All_TMX_Trackpacks_partial.zip';
                     a.click();
                     URL.revokeObjectURL(url);
                     alert(`🚫 Download stopped.\n${allDownloadedTracks.length} tracks saved as partial ZIP.`);
                 } catch (genError) {
-                    console.error('[TMX] ❌ Error generating partial ZIP:', genError);
+                    console.error('[TMX-PACK] ❌ Error generating partial ZIP:', genError);
                 }
             }
             resetDownloadUI();
@@ -792,9 +768,9 @@
     function handleCancel() {
         if (TMX_STATE.abortController) {
             TMX_STATE.abortController.abort();
-            console.log('[TMX] 🚫 Cancel requested');
+            console.log('[TMX-PACK] 🚫 Cancel requested');
         } else {
-            const modal = document.getElementById('tmx-modal');
+            const modal = document.getElementById('tmx-pack-modal');
             if (modal) {
                 modal.style.display = 'none';
             }
@@ -805,7 +781,7 @@
         const startBtn = document.getElementById('startDownload');
         const cancelBtn = document.getElementById('cancelDownload');
         const downloadBtn = document.querySelector('.tmx-downloader-btn');
-        const modal = document.getElementById('tmx-modal');
+        const modal = document.getElementById('tmx-pack-modal');
         
         if (startBtn) {
             startBtn.disabled = false;
@@ -818,7 +794,7 @@
         
         if (downloadBtn) {
             downloadBtn.disabled = false;
-            downloadBtn.textContent = 'Download Tracks';
+            downloadBtn.textContent = 'Download Trackpacks';
         }
         
         if (modal) {
@@ -833,85 +809,85 @@
         TMX_STATE.abortController = null;
     }
 
-  function createSkidMark(progressContainer, progressPercent) {
-      const skidContainer = document.getElementById('skidContainer');
-      if (!skidContainer) return;
-      
-      // Don't create skid marks at 0% or 100%
-      if (progressPercent <= 0 || progressPercent >= 100) return;
-      
-      const skid = document.createElement('div');
-      skid.className = 'tmx-skid-mark';
-      
-      // Position based on progress (convert % to px)
-      const containerWidth = progressContainer.offsetWidth;
-      const position = (progressPercent / 100) * containerWidth;
-      
-      // Add some randomness for realism
-      const randomOffset = Math.random() * 10 - 5; // -5 to +5px
-      
-      skid.style.left = `${Math.max(0, position + randomOffset)}px`;
-      skidContainer.appendChild(skid);
-      
-      // Cleanup old skid marks to prevent memory bloat
-      const allSkids = skidContainer.querySelectorAll('.tmx-skid-mark');
-      if (allSkids.length > 50) {
-          allSkids[0].remove(); // Remove oldest
-      }
-  }
+    function createSkidMark(progressContainer, progressPercent) {
+        const skidContainer = document.getElementById('skidContainer');
+        if (!skidContainer) return;
+        
+        // Don't create skid marks at 0% or 100%
+        if (progressPercent <= 0 || progressPercent >= 100) return;
+        
+        const skid = document.createElement('div');
+        skid.className = 'tmx-skid-mark';
+        
+        // Position based on progress (convert % to px)
+        const containerWidth = progressContainer.offsetWidth;
+        const position = (progressPercent / 100) * containerWidth;
+        
+        // Add some randomness for realism
+        const randomOffset = Math.random() * 10 - 5; // -5 to +5px
+        
+        skid.style.left = `${Math.max(0, position + randomOffset)}px`;
+        skidContainer.appendChild(skid);
+        
+        // Cleanup old skid marks to prevent memory bloat
+        const allSkids = skidContainer.querySelectorAll('.tmx-skid-mark');
+        if (allSkids.length > 50) {
+            allSkids[0].remove(); // Remove oldest
+        }
+    }
 
-  // Clears all skid marks
-  function clearSkidMarks() {
-      const skidContainer = document.getElementById('skidContainer');
-      if (skidContainer) {
-          skidContainer.innerHTML = '';
-      }
-  }
+    // Clears all skid marks
+    function clearSkidMarks() {
+        const skidContainer = document.getElementById('skidContainer');
+        if (skidContainer) {
+            skidContainer.innerHTML = '';
+        }
+    }
 
-  // Position the tire based on progress
-  function positionTire(progressPercent) {
-      const tire = document.getElementById('progressTire');
-      const progressContainer = document.getElementById('progressContainer');
-      
-      if (!tire || !progressContainer) return;
-      
-      const containerWidth = progressContainer.offsetWidth;
-      const tirePosition = (progressPercent / 100) * containerWidth;
-      
-      // Keep tire within bounds
-      const clampedPosition = Math.min(
-          Math.max(tirePosition, 10), // Don't go past left edge
-          containerWidth - 10 // Don't go past right edge
-      );
-      
-      tire.style.left = `${clampedPosition}px`;
-  }
+    // Position the tire based on progress
+    function positionTire(progressPercent) {
+        const tire = document.getElementById('progressTire');
+        const progressContainer = document.getElementById('progressContainer');
+        
+        if (!tire || !progressContainer) return;
+        
+        const containerWidth = progressContainer.offsetWidth;
+        const tirePosition = (progressPercent / 100) * containerWidth;
+        
+        // Keep tire within bounds
+        const clampedPosition = Math.min(
+            Math.max(tirePosition, 10), // Don't go past left edge
+            containerWidth - 10 // Don't go past right edge
+        );
+        
+        tire.style.left = `${clampedPosition}px`;
+    }
 
-  function updateProgress(percent, text) {
-      const progressBar = document.getElementById('progressBar');
-      const progressText = document.getElementById('progressText');
-      const progressContainer = document.getElementById('progressContainer');
-      
-      if (progressBar) {
-          // Store previous percentage to detect movement
-          const prevPercent = parseFloat(progressBar.style.width) || 0;
-          
-          progressBar.style.width = percent + '%';
-          progressBar.textContent = Math.round(percent) + '%';
-          
-          // Only create skid marks when moving forward
-          if (percent > prevPercent && percent > 5) {
-              createSkidMark(progressContainer, percent);
-          }
-          
-          // Position the tire
-          positionTire(percent);
-      }
-      
-      if (progressText) {
-          progressText.textContent = text || 'Processing...';
-      }
-  }
+    function updateProgress(percent, text) {
+        const progressBar = document.getElementById('progressBar');
+        const progressText = document.getElementById('progressText');
+        const progressContainer = document.getElementById('progressContainer');
+        
+        if (progressBar) {
+            // Store previous percentage to detect movement
+            const prevPercent = parseFloat(progressBar.style.width) || 0;
+            
+            progressBar.style.width = percent + '%';
+            progressBar.textContent = Math.round(percent) + '%';
+            
+            // Only create skid marks when moving forward
+            if (percent > prevPercent && percent > 5) {
+                createSkidMark(progressContainer, percent);
+            }
+            
+            // Position the tire
+            positionTire(percent);
+        }
+        
+        if (progressText) {
+            progressText.textContent = text || 'Processing...';
+        }
+    }
 
     function shuffleArray(array) {
         const shuffled = [...array];
@@ -920,6 +896,53 @@
             [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
         }
         return shuffled;
+    }
+
+    async function fetchAllPacks(baseUrl, maxFetch = Infinity, signal) {
+        const allPacks = [];
+        let url = new URL(baseUrl);
+        
+        // Ensure count is 40 for pagination
+        if (!url.searchParams.has('count') || parseInt(url.searchParams.get('count'), 10) < 40) {
+            url.searchParams.set('count', '40');
+        }
+        
+        let pageNum = 1;
+        while (true) {
+            if (signal.aborted) {
+                throw new DOMException('Download aborted', 'AbortError');
+            }
+            
+            console.log(`[TMX-PACK] Fetching page ${pageNum} from ${url}...`);
+            
+            const data = await proxyFetchJson(url.toString());
+            const results = data.Results || [];
+            
+            if (results.length === 0) {
+                console.log('[TMX-PACK] 📦 No more packs available.');
+                break;
+            }
+            
+            allPacks.push(...results);
+            console.log(`[TMX-PACK] 📦 Fetched ${results.length} packs from page ${pageNum}. Total so far: ${allPacks.length}`);
+            
+            if (results.length < 40 || allPacks.length >= maxFetch) {
+                console.log('[TMX-PACK] 📦 Finished gathering packs.');
+                break;
+            }
+            
+            // Prepare next page
+            const lastId = results[results.length - 1].PackId;
+            url.searchParams.set('after', lastId.toString());
+            pageNum++;
+        }
+        
+        return allPacks;
+    }
+
+    async function fetchPackTracks(packId, signal, exchange) {
+        const apiUrl = `${exchange.tracksApiBase}?packid=${packId}&fields=TrackId%2CTrackName%2CAuthors%5B%5D%2CUploader.Name&count=1000`;
+        return await fetchAllTracks(apiUrl, Infinity, signal);
     }
 
     async function fetchAllTracks(baseUrl, maxFetch = Infinity, signal) {
@@ -937,22 +960,21 @@
                 throw new DOMException('Download aborted', 'AbortError');
             }
             
-            // 🆕 Note: Progress update moved to handleDownload for better UX; remove if not needed here
-            console.log(`[TMX] Fetching page ${pageNum} from ${url}...`);  // Temp log for debugging
+            console.log(`[TMX-PACK] Fetching tracks page ${pageNum}...`);
             
-            const data = await proxyFetchJson(url.toString());  // Returns JSON data directly
+            const data = await proxyFetchJson(url.toString());
             const results = data.Results || [];
             
             if (results.length === 0) {
-                console.log('[TMX] 📄 No more tracks available.');
+                console.log('[TMX-PACK] 📄 No more tracks available.');
                 break;
             }
             
             allTracks.push(...results);
-            console.log(`[TMX] 📄 Fetched ${results.length} tracks from page ${pageNum}. Total so far: ${allTracks.length}`);
+            console.log(`[TMX-PACK] 📄 Fetched ${results.length} tracks from page ${pageNum}. Total so far: ${allTracks.length}`);
             
             if (results.length < 1000 || allTracks.length >= maxFetch) {
-                console.log('[TMX] 📄 Finished gathering tracks.');
+                console.log('[TMX-PACK] 📄 Finished gathering tracks.');
                 break;
             }
             
@@ -963,6 +985,12 @@
         }
         
         return allTracks;
+    }
+
+    async function fetchPackDetails(packId, exchange) {
+        const url = `${exchange.apiBase}?id=${packId}&fields=PackName%2CCreator.Name`;
+        const data = await proxyFetchJson(url.toString());
+        return data.Results?.[0] || { PackName: `Pack_${packId}`, Creator: { Name: 'Unknown' } };
     }
 
     // ============================================================================
@@ -981,15 +1009,15 @@
         }
 
         // Check if our UI exists
-        const existingUI = dropdown.querySelector('#tmx-download-filter');
+        const existingUI = dropdown.querySelector('#tmx-pack-download-filter');
         if (!existingUI) {
-            console.log('[TMX] 🔄 UI missing, recreating...');
+            console.log('[TMX-PACK] 🔄 UI missing, recreating...');
             createUI(dropdown);
         } else {
             // Check if API URL changed since last update
             const currentApiUrl = getApiUrlSafe();
             if (currentApiUrl !== TMX_STATE.lastApiUrl) {
-                console.log('[TMX] 🔄 API URL changed via UI check, resetting count...');
+                console.log('[TMX-PACK] 🔄 API URL changed via UI check, resetting count...');
                 TMX_STATE.realCount = null;
                 TMX_STATE.lastApiUrl = currentApiUrl;  // Update the stored URL
             }
@@ -1026,24 +1054,24 @@
 
         // Watch for API URL changes
         const apiUrlObserver = new MutationObserver((mutations) => {
-        mutations.forEach(mutation => {
-            if (mutation.attributeName === 'data-tmx-api-url') {
-                console.log('[TMX] 📡 API URL changed, updating status...');
-                TMX_STATE.realCount = null;
-                TMX_STATE.isFetchingCount = true;
-                updateStatus(true);
-                // Simulate a brief loading state
-                setTimeout(() => {
-                    TMX_STATE.isFetchingCount = false;
-                    updateStatus();
-                }, 300);
-            }
+            mutations.forEach(mutation => {
+                if (mutation.attributeName === 'data-tmx-pack-api-url') {
+                    console.log('[TMX-PACK] 📡 API URL changed, updating status...');
+                    TMX_STATE.realCount = null;
+                    TMX_STATE.isFetchingCount = true;
+                    updateStatus(true);
+                    // Simulate a brief loading state
+                    setTimeout(() => {
+                        TMX_STATE.isFetchingCount = false;
+                        updateStatus();
+                    }, 300);
+                }
+            });
         });
-    });
         
         apiUrlObserver.observe(document.documentElement, { attributes: true });
         
-        console.log('[TMX] ✅ UI monitoring active');
+        console.log('[TMX-PACK] ✅ UI monitoring active');
     }
 
     // ============================================================================
@@ -1052,29 +1080,29 @@
     
     function init() {
         if (TMX_STATE.isInitialized) {
-            console.log('[TMX] Already initialized');
+            console.log('[TMX-PACK] Already initialized');
             return;
         }
 
         const exchange = getCurrentExchange();
         if (!exchange) {
-            console.log('[TMX] Unsupported exchange:', window.location.hostname);
+            console.log('[TMX-PACK] Unsupported exchange:', window.location.hostname);
             return;
         }
 
-        console.log('[TMX] 🚀 Initializing for:', exchange.name);
+        console.log('[TMX-PACK] 🚀 Initializing for:', exchange.name);
 
         // Listen for API capture events
-        window.addEventListener('tmx-api-captured', (e) => {
-          console.log('[TMX] 📡 API URL captured via event:', e.detail.url);
-          TMX_STATE.realCount = null;
-          TMX_STATE.isFetchingCount = true;
-          updateStatus(true);
-          setTimeout(() => {
-              TMX_STATE.isFetchingCount = false;
-              updateStatus();
-          }, 300);
-      });
+        window.addEventListener('tmx-pack-api-captured', (e) => {
+            console.log('[TMX-PACK] 📡 API URL captured via event:', e.detail.url);
+            TMX_STATE.realCount = null;
+            TMX_STATE.isFetchingCount = true;
+            updateStatus(true);
+            setTimeout(() => {
+                TMX_STATE.isFetchingCount = false;
+                updateStatus();
+            }, 300);
+        });
 
         // Poll for dropdown
         const waitForDropdown = setInterval(() => {
@@ -1084,14 +1112,14 @@
             if (filterHeader && filterHeader.textContent.includes('FILTERS')) {
                 clearInterval(waitForDropdown);
 
-                console.log('[TMX] ✅ Filter dropdown found');
+                console.log('[TMX-PACK] ✅ Filter dropdown found');
 
                 createUI(dropdown);
                 createModal();
                 startUIMonitoring();
 
                 TMX_STATE.isInitialized = true;
-                console.log('[TMX] ✅ Initialization complete');
+                console.log('[TMX-PACK] ✅ Initialization complete');
                 updateStatus();
             }
         }, 300);
@@ -1099,7 +1127,7 @@
         // Safety timeout
         setTimeout(() => {
             if (!TMX_STATE.isInitialized) {
-                console.warn('[TMX] ⚠️ Forcing initialization after timeout');
+                console.warn('[TMX-PACK] ⚠️ Forcing initialization after timeout');
                 const dropdown = document.querySelector('.dropdown-window-active');
                 if (dropdown) {
                     createUI(dropdown);
@@ -1128,7 +1156,7 @@
         const url = location.href;
         if (url !== lastUrl) {
             lastUrl = url;
-            console.log('[TMX] 🔄 URL changed, reinitializing...');
+            console.log('[TMX-PACK] 🔄 URL changed, reinitializing...');
             TMX_STATE.isInitialized = false;
             setTimeout(init, 500);
         }

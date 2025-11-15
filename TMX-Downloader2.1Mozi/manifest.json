@@ -39,5 +39,8 @@
         "required": ["none"]
       }
     }
+  },
+  "icons": {
+    "128": "icons/icon128.png"
   }
 }
