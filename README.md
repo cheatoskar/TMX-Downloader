@@ -1,8 +1,8 @@
 # 🚀 TMX Downloader
-
+[![Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-Available-blue?logo=google-chrome)](https://chromewebstore.google.com/detail/hplkjclpiopmjlpejpgkoobghlpbjopp)
 [![Opera Add-ons](https://img.shields.io/badge/Opera-Add--ons-red?logo=opera)](https://addons.opera.com/de/extensions/details/DEIN-SLUG/)
 [![Mozilla Add-on](https://img.shields.io/badge/Firefox-Add--on-orange?logo=firefox-browser)](https://addons.mozilla.org/de/firefox/addon/DEIN-ADDON-ID/)
- [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Made with JavaScript](https://img.shields.io/badge/Made_with-JavaScript-orange?style=flat&logo=javascript)](https://developer.mozilla.org/en-US/docs/Web/JavaScript)
+[![Made with JavaScript](https://img.shields.io/badge/Made_with-JavaScript-orange?style=flat&logo=javascript)](https://developer.mozilla.org/en-US/docs/Web/JavaScript)
 
 **TMX Downloader** is a powerful Chrome extension that supercharges your TrackMania workflow! Originally created to support the [100% TMX Project](https://tmnf.exchange/threadshow/11550542)—a community initiative to legitimately finish every map on TM-Exchange without cheated author times (e.g., no external tools or removed validations)—this tool makes bulk downloading search results effortless. Seamlessly download tracks from popular TM-Exchange sites as GBX files—individually or bundled into a ZIP archive. With smart pagination, random shuffling and metadata export.
 
