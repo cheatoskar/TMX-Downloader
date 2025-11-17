@@ -215,12 +215,20 @@
         try {
             const urlObj = new URL(apiUrl);
             urlObj.searchParams.set('count', '1000');
-            const data = await proxyFetchJson(urlObj.toString());  // Returns JSON data directly
-            const results = data.Results || [];
-            const more = data.More || false;
-            return more ? '1000+' : results.length.toString();
+            
+            // 🆕 IMPORTANT: Fetch and store in cache
+            const abortController = new AbortController();
+            CACHED_TRACK_DATA = await fetchAllTracks(urlObj.toString(), 1000, abortController.signal);
+            
+            const count = CACHED_TRACK_DATA.length;
+            const more = count >= 1000; // If we got exactly 1000, there might be more
+            
+            console.log(`[TMX] 📊 Fetched and cached ${count} tracks for counter`);
+            
+            return more ? '1000+' : count.toString();
         } catch (e) {
             console.error('[TMX] Error fetching real count:', e);
+            CACHED_TRACK_DATA = null; // Clear on error
             return 'Error';
         }
     }
@@ -501,6 +509,15 @@
                         Cancel
                     </button>
                 </div>
+                <!-- Statistics Button -->
+                <div class="tmx-option-group">
+                    <button id="viewStatistics" class="tmx-btn tmx-btn-stats">
+                        📊 View Track Statistics
+                    </button>
+                    <small style="color: var(--muted-textcolor); font-size: 11px; display: block; margin-top: 4px;">
+                        Analyze all tracks from current search results
+                    </small>
+                </div>
             </div>
         `;
         
@@ -509,6 +526,28 @@
         // Event listeners
         document.getElementById('startDownload').addEventListener('click', handleDownload);
         document.getElementById('cancelDownload').addEventListener('click', handleCancel);
+        document.getElementById('viewStatistics').addEventListener('click', async () => {
+            // Create and show stats modal
+            await createStatisticsModal();
+            const statsModal = document.getElementById('tmx-stats-modal');
+            statsModal.style.display = 'flex';
+            
+            // Fetch and analyze data
+            const stats = await fetchAndAnalyzeAllTracks();
+            
+            if (stats) {
+                // Hide loading, show content
+                document.getElementById('statsLoading').style.display = 'none';
+                document.getElementById('statsContent').style.display = 'block';
+                
+                // Render all charts
+                renderStatisticsCharts(stats);
+            } else {
+                statsModal.style.display = 'none';
+            }
+        });
+
+
         document.getElementById('multiExchangeMode').addEventListener('change', (e) => {
             const selector = document.getElementById('exchangeSelector');
             selector.style.display = e.target.checked ? 'block' : 'none';
@@ -532,6 +571,746 @@
         console.log('[TMX] ✅ Modal created and attached');
         return modal;
     }
+
+    // ============================================================================
+// STATISTICS MODAL
+// ============================================================================
+
+async function createStatisticsModal() {
+    // Remove old stats modal if exists
+    const oldStatsModal = document.getElementById('tmx-stats-modal');
+    if (oldStatsModal) {
+        oldStatsModal.remove();
+    }
+    
+    const statsModal = document.createElement('div');
+    statsModal.id = 'tmx-stats-modal';
+    statsModal.className = 'tmx-modal tmx-stats-modal';
+    
+    statsModal.innerHTML = `
+        <div class="tmx-stats-modal-content">
+            <div class="tmx-stats-header">
+                <h2>📊 Track Statistics & Analytics</h2>
+                <button id="closeStatsModal" class="tmx-close-btn">✕</button>
+            </div>
+            
+            <div id="statsLoading" class="tmx-stats-loading">
+                <div class="tmx-spinner"></div>
+                <p>Analyzing tracks...</p>
+            </div>
+            
+            <div id="statsContent" style="display: none;">
+                <!-- Summary Cards -->
+                <div class="tmx-stats-summary">
+                    <div class="tmx-stat-card">
+                        <div class="tmx-stat-icon">🏁</div>
+                        <div class="tmx-stat-value" id="totalTracks">0</div>
+                        <div class="tmx-stat-label">Total Tracks</div>
+                    </div>
+                    <div class="tmx-stat-card">
+                        <div class="tmx-stat-icon">👤</div>
+                        <div class="tmx-stat-value" id="totalAuthors">0</div>
+                        <div class="tmx-stat-label">Unique Authors</div>
+                    </div>
+                    <div class="tmx-stat-card">
+                        <div class="tmx-stat-icon">⭐</div>
+                        <div class="tmx-stat-value" id="avgAward">0.0</div>
+                        <div class="tmx-stat-label">Avg Awards</div>
+                    </div>
+                    <div class="tmx-stat-card">
+                        <div class="tmx-stat-icon">🏆</div>
+                        <div class="tmx-stat-value" id="topRated">-</div>
+                        <div class="tmx-stat-label">Top Rated Track</div>
+                    </div>
+                </div>
+                
+                <!-- Tabs -->
+                <div class="tmx-stats-tabs">
+                    <button class="tmx-stats-tab active" data-tab="overview">Overview</button>
+                    <button class="tmx-stats-tab" data-tab="authors">Top Authors</button>
+                    <button class="tmx-stats-tab" data-tab="awards">Awards Analysis</button>
+                    <button class="tmx-stats-tab" data-tab="difficulty">Difficulty</button>
+                    <button class="tmx-stats-tab" data-tab="timeline">Timeline</button>
+                    <button class="tmx-stats-tab" data-tab="environments">Environments</button>
+                </div>
+                
+                <!-- Tab Content -->
+                <div class="tmx-stats-panels">
+                    <!-- Overview Tab -->
+                    <div class="tmx-stats-panel active" data-panel="overview">
+                        <div class="tmx-chart-container">
+                            <h3>📈 Award Distribution</h3>
+                            <canvas id="awardDistChart"></canvas>
+                        </div>
+                        <div class="tmx-chart-container">
+                            <h3>📊 Track Length Distribution</h3>
+                            <canvas id="lengthDistChart"></canvas>
+                        </div>
+                    </div>
+                    
+                    <!-- Top Authors Tab -->
+                    <div class="tmx-stats-panel" data-panel="authors">
+                        <div class="tmx-chart-container">
+                            <h3>👥 Top 15 Track Authors</h3>
+                            <canvas id="authorsChart"></canvas>
+                        </div>
+                        <div class="tmx-top-authors-list" id="authorsList"></div>
+                    </div>
+                    
+                    <!-- Awards Analysis Tab -->
+                    <div class="tmx-stats-panel" data-panel="awards">
+                        <div class="tmx-chart-container">
+                            <h3>⭐ Awards vs Track Count</h3>
+                            <canvas id="awardsScatterChart"></canvas>
+                        </div>
+                        <div class="tmx-chart-container">
+                            <h3>🏆 Most Awarded Tracks</h3>
+                            <div id="mostAwardedList"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- Difficulty Tab -->
+                    <div class="tmx-stats-panel" data-panel="difficulty">
+                        <div class="tmx-chart-container">
+                            <h3>🎯 Difficulty Distribution</h3>
+                            <canvas id="difficultyChart"></canvas>
+                        </div>
+                        <div class="tmx-stats-grid">
+                            <div class="tmx-stat-box">
+                                <h4>Beginner Tracks</h4>
+                                <p id="beginnerCount">0</p>
+                            </div>
+                            <div class="tmx-stat-box">
+                                <h4>Intermediate Tracks</h4>
+                                <p id="intermediateCount">0</p>
+                            </div>
+                            <div class="tmx-stat-box">
+                                <h4>Expert Tracks</h4>
+                                <p id="expertCount">0</p>
+                            </div>
+                            <div class="tmx-stat-box">
+                                <h4>Lunatic Tracks</h4>
+                                <p id="lunaticCount">0</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Timeline Tab -->
+                    <div class="tmx-stats-panel" data-panel="timeline">
+                        <div class="tmx-chart-container">
+                            <h3>📅 Upload Timeline</h3>
+                            <canvas id="timelineChart"></canvas>
+                        </div>
+                        <div class="tmx-stats-grid">
+                            <div class="tmx-stat-box">
+                                <h4>Oldest Track</h4>
+                                <p id="oldestTrack">-</p>
+                            </div>
+                            <div class="tmx-stat-box">
+                                <h4>Newest Track</h4>
+                                <p id="newestTrack">-</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Environments Tab -->
+                    <div class="tmx-stats-panel" data-panel="environments">
+                        <div class="tmx-chart-container">
+                            <h3>🌍 Environment/Style Distribution</h3>
+                            <canvas id="environmentChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Export Options -->
+                <div class="tmx-stats-footer">
+                    <button id="exportStatsCSV" class="tmx-btn tmx-btn-secondary">
+                        📄 Export as CSV
+                    </button>
+                    <button id="exportStatsJSON" class="tmx-btn tmx-btn-secondary">
+                        💾 Export as JSON
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(statsModal);
+    
+    // Event listeners
+    document.getElementById('closeStatsModal').addEventListener('click', () => {
+        statsModal.style.display = 'none';
+    });
+    
+    // Tab switching
+    const tabs = statsModal.querySelectorAll('.tmx-stats-tab');
+    const panels = statsModal.querySelectorAll('.tmx-stats-panel');
+    
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            const targetPanel = tab.dataset.tab;
+            
+            tabs.forEach(t => t.classList.remove('active'));
+            panels.forEach(p => p.classList.remove('active'));
+            
+            tab.classList.add('active');
+            document.querySelector(`[data-panel="${targetPanel}"]`).classList.add('active');
+        });
+    });
+    
+    // Export buttons
+    document.getElementById('exportStatsCSV').addEventListener('click', exportStatisticsCSV);
+    document.getElementById('exportStatsJSON').addEventListener('click', exportStatisticsJSON);
+    
+    // Close on backdrop click
+    statsModal.addEventListener('click', (e) => {
+        if (e.target === statsModal) {
+            statsModal.style.display = 'none';
+        }
+    });
+    
+    return statsModal;
+}
+
+// ============================================================================
+// STATISTICS DATA PROCESSING
+// ============================================================================
+
+let CACHED_TRACK_DATA = null;
+
+async function fetchAndAnalyzeAllTracks() {
+    const apiUrl = getApiUrlSafe();
+    if (!apiUrl) {
+        alert('❌ No API URL found! Please perform a search first.');
+        return null;
+    }
+    
+    try {
+        let tracks = [];
+        
+        // 🆕 Reuse cached data if available
+        if (CACHED_TRACK_DATA && CACHED_TRACK_DATA.length > 0) {
+            console.log(`[TMX] 📦 Using ${CACHED_TRACK_DATA.length} cached tracks`);
+            tracks = [...CACHED_TRACK_DATA]; // Copy the array
+            
+            // 🆕 Check if we need to fetch MORE tracks
+            // If cache has exactly 1000 tracks, there might be more
+            if (tracks.length >= 1000) {
+                console.log('[TMX] 🔄 Fetching remaining tracks beyond cached 1000...');
+                
+                const lastCachedId = tracks[tracks.length - 1].TrackId;
+                const urlObj = new URL(apiUrl);
+                urlObj.searchParams.set('after', lastCachedId.toString());
+                urlObj.searchParams.set('count', '1000');
+                
+                const abortController = new AbortController();
+                const remainingTracks = await fetchAllTracks(
+                    urlObj.toString(), 
+                    Infinity, 
+                    abortController.signal
+                );
+                
+                console.log(`[TMX] 📊 Fetched ${remainingTracks.length} additional tracks`);
+                tracks = [...tracks, ...remainingTracks];
+                
+                // Update the cache with ALL tracks
+                CACHED_TRACK_DATA = tracks;
+            }
+        } else {
+            // 🆕 No cache - fetch everything
+            console.log('[TMX] 🔄 No cache found, fetching all tracks...');
+            const abortController = new AbortController();
+            tracks = await fetchAllTracks(apiUrl, Infinity, abortController.signal);
+            
+            // Store in cache for future use
+            CACHED_TRACK_DATA = tracks;
+            console.log(`[TMX] 📦 Cached ${tracks.length} tracks`);
+        }
+        
+        if (tracks.length === 0) {
+            alert('❌ No tracks found in current search!');
+            return null;
+        }
+        
+        console.log(`[TMX] 📊 Analyzing ${tracks.length} total tracks`);
+        
+        // Process statistics (rest of your code remains the same)
+        const stats = {
+            totalTracks: tracks.length,
+            tracks: tracks,
+            
+            // Author analysis
+            authors: {},
+            totalAuthors: 0,
+            topAuthors: [],
+            
+            // Awards analysis
+            totalAwards: 0,
+            avgAward: 0,
+            awardDistribution: {},
+            topRatedTracks: [],
+            
+            // Difficulty analysis
+            difficultyCount: {
+                'Beginner': 0,
+                'Intermediate': 0,
+                'Expert': 0,
+                'Lunatic': 0,
+                'Unknown': 0
+            },
+            
+            // Length analysis
+            avgLength: 0,
+            lengthBuckets: {},
+            
+            // Timeline analysis
+            uploadDates: [],
+            oldestTrack: null,
+            newestTrack: null,
+            
+            // Environment analysis
+            environments: {}
+        };
+        
+        // Process each track
+        tracks.forEach(track => {
+            // Author stats
+            const authorName = track.Uploader?.Name || 'Unknown';
+            if (!stats.authors[authorName]) {
+                stats.authors[authorName] = {
+                    name: authorName,
+                    trackCount: 0,
+                    totalAwards: 0,
+                    tracks: []
+                };
+            }
+            stats.authors[authorName].trackCount++;
+            stats.authors[authorName].totalAwards += track.Awards || 0;
+            stats.authors[authorName].tracks.push(track.TrackName);
+            
+            // Award stats
+            const awards = track.Awards || 0;
+            stats.totalAwards += awards;
+            stats.awardDistribution[awards] = (stats.awardDistribution[awards] || 0) + 1;
+            
+            // Difficulty stats
+            const difficultyMap = {
+                1: 'Beginner',
+                2: 'Intermediate',
+                3: 'Expert',
+                4: 'Lunatic'
+            };
+            const difficultyNum = track.Difficulty;
+            const difficultyString = difficultyMap[difficultyNum] || 'Unknown';
+            
+            if (stats.difficultyCount.hasOwnProperty(difficultyString)) {
+                stats.difficultyCount[difficultyString]++;
+            } else {
+                stats.difficultyCount['Unknown']++;
+            }
+            
+            // Length stats
+            const lengthSeconds = Math.round((track.AuthorTime || 0) / 1000);
+            const lengthBucket = Math.floor(lengthSeconds / 30) * 30;
+            stats.lengthBuckets[lengthBucket] = (stats.lengthBuckets[lengthBucket] || 0) + 1;
+            
+            // Timeline stats
+            if (track.UploadedAt) {
+                const date = new Date(track.UploadedAt);
+                stats.uploadDates.push(date);
+                
+                if (!stats.oldestTrack || date < new Date(stats.oldestTrack.UploadedAt)) {
+                    stats.oldestTrack = track;
+                }
+                if (!stats.newestTrack || date > new Date(stats.newestTrack.UploadedAt)) {
+                    stats.newestTrack = track;
+                }
+            }
+            
+            // Environment stats
+            const styleType = track.PrimaryType;
+            const styleKey = (styleType !== null && styleType !== undefined) ? styleType : 'Unknown';
+            stats.environments[styleKey] = (stats.environments[styleKey] || 0) + 1;
+        });
+        
+        // Calculate derived stats
+        stats.totalAuthors = Object.keys(stats.authors).length;
+        stats.avgAward = tracks.length > 0 ? (stats.totalAwards / tracks.length).toFixed(2) : 0;
+        stats.avgLength = tracks.reduce((sum, t) => sum + (t.AuthorTime || 0), 0) / tracks.length / 1000;
+        
+        // Top authors
+        stats.topAuthors = Object.values(stats.authors)
+            .sort((a, b) => b.trackCount - a.trackCount)
+            .slice(0, 15);
+        
+        // Top rated tracks
+        stats.topRatedTracks = [...tracks]
+            .sort((a, b) => (b.Awards || 0) - (a.Awards || 0))
+            .slice(0, 10);
+        
+        return stats;
+        
+    } catch (error) {
+        console.error('[TMX] Error analyzing tracks:', error);
+        alert(`❌ Error analyzing tracks: ${error.message}`);
+        return null;
+    }
+}
+
+// ============================================================================
+// CHART RENDERING
+// ============================================================================
+
+function renderStatisticsCharts(stats) {
+    // Load Chart.js if not already loaded
+    if (!window.Chart) {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
+        script.onload = () => renderAllCharts(stats);
+        document.head.appendChild(script);
+    } else {
+        renderAllCharts(stats);
+    }
+}
+
+function renderAllCharts(stats) {
+    // Update summary cards
+    document.getElementById('totalTracks').textContent = stats.totalTracks.toLocaleString();
+    document.getElementById('totalAuthors').textContent = stats.totalAuthors.toLocaleString();
+    document.getElementById('avgAward').textContent = stats.avgAward;
+    document.getElementById('topRated').textContent = stats.topRatedTracks[0]?.TrackName || 'N/A';
+    
+    // 1. Award Distribution Chart
+    renderAwardDistribution(stats);
+    
+    // 2. Length Distribution Chart
+    renderLengthDistribution(stats);
+    
+    // 3. Top Authors Chart
+    renderTopAuthors(stats);
+    
+    // 4. Awards Scatter Chart
+    renderAwardsScatter(stats);
+    
+    // 5. Most Awarded Tracks List
+    renderMostAwardedList(stats);
+    
+    // 6. Difficulty Chart
+    renderDifficultyChart(stats);
+    
+    // 7. Timeline Chart
+    renderTimelineChart(stats);
+    
+    // 8. Environment Chart
+    renderEnvironmentChart(stats);
+    
+    // Update difficulty counts
+    document.getElementById('beginnerCount').textContent = stats.difficultyCount.Beginner;
+    document.getElementById('intermediateCount').textContent = stats.difficultyCount.Intermediate;
+    document.getElementById('expertCount').textContent = stats.difficultyCount.Expert;
+    document.getElementById('lunaticCount').textContent = stats.difficultyCount.Lunatic;
+    
+    // Update timeline info
+    if (stats.oldestTrack) {
+        document.getElementById('oldestTrack').textContent = 
+            `${stats.oldestTrack.TrackName} (${new Date(stats.oldestTrack.UploadedAt).toLocaleDateString()})`;
+    }
+    if (stats.newestTrack) {
+        document.getElementById('newestTrack').textContent = 
+            `${stats.newestTrack.TrackName} (${new Date(stats.newestTrack.UploadedAt).toLocaleDateString()})`;
+    }
+}
+
+function renderAwardDistribution(stats) {
+    const ctx = document.getElementById('awardDistChart');
+    const sortedAwards = Object.entries(stats.awardDistribution)
+        .sort((a, b) => parseInt(a[0]) - parseInt(b[0]))
+        .slice(0, 20); // Top 20 award values
+    
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: sortedAwards.map(([award]) => `${award} ⭐`),
+            datasets: [{
+                label: 'Number of Tracks',
+                data: sortedAwards.map(([, count]) => count),
+                backgroundColor: 'rgba(75, 192, 192, 0.6)',
+                borderColor: 'rgba(75, 192, 192, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: false },
+                title: { display: false }
+            },
+            scales: {
+                y: { beginAtZero: true }
+            }
+        }
+    });
+}
+
+function renderLengthDistribution(stats) {
+    const ctx = document.getElementById('lengthDistChart');
+    const sortedLengths = Object.entries(stats.lengthBuckets)
+        .sort((a, b) => parseInt(a[0]) - parseInt(b[0]))
+        .slice(0, 20);
+    
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: sortedLengths.map(([sec]) => `${sec}s`),
+            datasets: [{
+                label: 'Track Count',
+                data: sortedLengths.map(([, count]) => count),
+                fill: true,
+                backgroundColor: 'rgba(255, 159, 64, 0.2)',
+                borderColor: 'rgba(255, 159, 64, 1)',
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: false }
+            }
+        }
+    });
+}
+
+function renderTopAuthors(stats) {
+    const ctx = document.getElementById('authorsChart');
+    
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: stats.topAuthors.map(a => a.name),
+            datasets: [{
+                label: 'Tracks',
+                data: stats.topAuthors.map(a => a.trackCount),
+                backgroundColor: 'rgba(153, 102, 255, 0.6)',
+                borderColor: 'rgba(153, 102, 255, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            plugins: {
+                legend: { display: false }
+            }
+        }
+    });
+    
+    // Render detailed author list
+    const authorsList = document.getElementById('authorsList');
+    authorsList.innerHTML = stats.topAuthors.map((author, idx) => `
+        <div class="tmx-author-item">
+            <span class="tmx-author-rank">#${idx + 1}</span>
+            <span class="tmx-author-name">${author.name}</span>
+            <span class="tmx-author-tracks">${author.trackCount} tracks</span>
+            <span class="tmx-author-awards">⭐ ${author.totalAwards}</span>
+        </div>
+    `).join('');
+}
+
+function renderAwardsScatter(stats) {
+    const ctx = document.getElementById('awardsScatterChart');
+    const data = stats.tracks.map((track, idx) => ({
+        x: idx,
+        y: track.Awards || 0
+    }));
+    
+    new Chart(ctx, {
+        type: 'scatter',
+        data: {
+            datasets: [{
+                label: 'Awards per Track',
+                data: data,
+                backgroundColor: 'rgba(255, 99, 132, 0.5)'
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: false }
+            }
+        }
+    });
+}
+
+function renderMostAwardedList(stats) {
+    const container = document.getElementById('mostAwardedList');
+    container.innerHTML = stats.topRatedTracks.map((track, idx) => `
+        <div class="tmx-awarded-track">
+            <span class="tmx-track-rank">${idx + 1}</span>
+            <div class="tmx-track-info">
+                <div class="tmx-track-name">${track.TrackName}</div>
+                <div class="tmx-track-author">by ${track.Uploader?.Name || 'Unknown'}</div>
+            </div>
+            <span class="tmx-track-awards">⭐ ${track.Awards || 0}</span>
+        </div>
+    `).join('');
+}
+
+function renderDifficultyChart(stats) {
+    const ctx = document.getElementById('difficultyChart');
+    const difficulties = ['Beginner', 'Intermediate', 'Expert', 'Lunatic'];
+    const colors = [
+        'rgba(75, 192, 192, 0.6)',
+        'rgba(255, 206, 86, 0.6)',
+        'rgba(255, 159, 64, 0.6)',
+        'rgba(255, 99, 132, 0.6)'
+    ];
+    
+    new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: difficulties,
+            datasets: [{
+                data: difficulties.map(d => stats.difficultyCount[d]),
+                backgroundColor: colors
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { position: 'bottom' }
+            }
+        }
+    });
+}
+
+function renderTimelineChart(stats) {
+    const ctx = document.getElementById('timelineChart');
+    
+    // Group by month
+    const monthCounts = {};
+    stats.uploadDates.forEach(date => {
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        monthCounts[monthKey] = (monthCounts[monthKey] || 0) + 1;
+    });
+    
+    const sortedMonths = Object.entries(monthCounts).sort();
+    
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: sortedMonths.map(([month]) => month),
+            datasets: [{
+                label: 'Uploads',
+                data: sortedMonths.map(([, count]) => count),
+                fill: true,
+                backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: false }
+            }
+        }
+    });
+}
+
+function renderEnvironmentChart(stats) {
+    const ctx = document.getElementById('environmentChart');
+    const sortedEnvs = Object.entries(stats.environments)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10);
+    
+    const styleMap = {
+        0: 'Normal',
+        1: 'Stunt',
+        2: 'Maze',
+        3: 'Offroad',
+        4: 'Laps',
+        5: 'Fullspeed',
+        6: 'LOL',
+        7: 'Tech',
+        8: 'SpeedTech',
+        9: 'RPG',
+        10: 'PressForward',
+        11: 'Trial',
+        12: 'Grass',
+        'Unknown': 'Unknown' // Handle the unknown category
+    };
+    
+    new Chart(ctx, {
+        type: 'pie',
+        data: {
+            labels: sortedEnvs.map(([styleKey, count]) => styleMap[styleKey] || `Other (${styleKey})`),
+            datasets: [{
+                data: sortedEnvs.map(([, count]) => count),
+                backgroundColor: [
+                    'rgba(255, 99, 132, 0.6)',
+                    'rgba(54, 162, 235, 0.6)',
+                    'rgba(255, 206, 86, 0.6)',
+                    'rgba(75, 192, 192, 0.6)',
+                    'rgba(153, 102, 255, 0.6)',
+                    'rgba(255, 159, 64, 0.6)',
+                    'rgba(199, 199, 199, 0.6)',
+                    'rgba(83, 102, 255, 0.6)',
+                    'rgba(255, 99, 255, 0.6)',
+                    'rgba(99, 255, 132, 0.6)'
+                ]
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { position: 'right' }
+            }
+        }
+    });
+}
+
+// ============================================================================
+// EXPORT FUNCTIONS
+// ============================================================================
+
+function exportStatisticsCSV() {
+    if (!CACHED_TRACK_DATA) return;
+    
+    const headers = ['Track ID', 'Track Name', 'Author', 'Awards', 'Difficulty', 'Length (s)', 'Upload Date', 'Environment'];
+    const rows = CACHED_TRACK_DATA.map(track => [
+        track.TrackId,
+        `"${track.TrackName.replace(/"/g, '""')}"`,
+        `"${(track.Uploader?.Name || 'Unknown').replace(/"/g, '""')}"`,
+        track.Awards || 0,
+        track.Difficulty || 'Unknown',
+        Math.round((track.AuthorTime || 0) / 1000),
+        track.UploadedAt || '',
+        track.Environment || track.Style || 'Unknown'
+    ]);
+    
+    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `TMX_Statistics_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+function exportStatisticsJSON() {
+    if (!CACHED_TRACK_DATA) return;
+    
+    const json = JSON.stringify(CACHED_TRACK_DATA, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `TMX_Statistics_${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
 
     // ============================================================================
     // DOWNLOAD LOGIC
@@ -581,6 +1360,10 @@
         if (startBtn) {
             startBtn.disabled = true;
             startBtn.textContent = '⏳ Downloading...';
+        }
+        if (startBtn) {
+            startBtn.textContent = '✅ Download Complete';
+            startBtn.style.background = 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)';
         }
         if (cancelBtn) {
             cancelBtn.textContent = 'Stop';
@@ -641,8 +1424,34 @@
                 );
                 
                 // Fetch tracks from this exchange
-                const effectiveMaxFetch = maxTrackCount === Infinity ? Infinity : (startIndex + maxTrackCount);
-                let exchangeTracks = await fetchAllTracks(currentApiUrl, effectiveMaxFetch, signal);
+                let exchangeTracks = [];
+
+                // Check if we can reuse cached data (only for single exchange mode, same URL)
+                if (!multiMode && currentApiUrl === getApiUrlSafe() && CACHED_TRACK_DATA && CACHED_TRACK_DATA.length > 0) {
+                    console.log(`[TMX] 📦 Reusing ${CACHED_TRACK_DATA.length} cached tracks for download`);
+                    exchangeTracks = [...CACHED_TRACK_DATA];
+                    
+                    // If we need more tracks than cached, fetch additional
+                    const effectiveMaxFetch = maxTrackCount === Infinity ? Infinity : (startIndex + maxTrackCount);
+                    if (exchangeTracks.length < effectiveMaxFetch) {
+                        console.log('[TMX] 🔄 Need more tracks than cached, fetching additional...');
+                        const lastCachedId = exchangeTracks[exchangeTracks.length - 1].TrackId;
+                        const urlObj = new URL(currentApiUrl);
+                        urlObj.searchParams.set('after', lastCachedId.toString());
+                        urlObj.searchParams.set('count', '1000');
+                        
+                        const remainingTracks = await fetchAllTracks(urlObj.toString(), effectiveMaxFetch - exchangeTracks.length, signal);
+                        exchangeTracks = [...exchangeTracks, ...remainingTracks];
+                        
+                        // Update cache
+                        CACHED_TRACK_DATA = exchangeTracks;
+                    }
+                } else {
+                    // Multi-exchange mode or different URL - fetch fresh
+                    console.log(`[TMX] 🔄 Fetching fresh tracks from ${exchange.name}...`);
+                    const effectiveMaxFetch = maxTrackCount === Infinity ? Infinity : (startIndex + maxTrackCount);
+                    exchangeTracks = await fetchAllTracks(currentApiUrl, effectiveMaxFetch, signal);
+                }
                 
                 console.log(`[TMX] 📊 Fetched ${exchangeTracks.length} tracks from ${exchange.name}`);
                 
@@ -740,7 +1549,7 @@
                 zip.file('_all_metadata.json', JSON.stringify(allDownloadedTracks, null, 2));
             }
             
-            updateProgress(100, 'Finishing...');
+            updateProgress(100, `✅ Complete! ${allDownloadedTracks.length} tracks downloaded from ${selectedExchanges.length} exchange(s).`);
             
             // Generate ZIP
             if (createZip && allDownloadedTracks.length > 0) {
@@ -757,10 +1566,6 @@
                 a.click();
                 URL.revokeObjectURL(url);
             }
-            
-            console.log('[TMX] ✅ Download complete');
-            alert(`✅ Download complete!\n${allDownloadedTracks.length} tracks downloaded from ${selectedExchanges.length} exchange(s).`);
-            
         } catch (error) {
             if (error.name !== 'AbortError') {
                 console.error('[TMX] ❌ Download failed:', error);
@@ -780,7 +1585,6 @@
                     a.download = 'Best_of_All_TMX_partial.zip';
                     a.click();
                     URL.revokeObjectURL(url);
-                    alert(`🚫 Download stopped.\n${allDownloadedTracks.length} tracks saved as partial ZIP.`);
                 } catch (genError) {
                     console.error('[TMX] ❌ Error generating partial ZIP:', genError);
                 }
@@ -810,6 +1614,7 @@
         if (startBtn) {
             startBtn.disabled = false;
             startBtn.textContent = 'Start Download';
+            startBtn.style.background = '';
         }
         
         if (cancelBtn) {
@@ -926,6 +1731,12 @@
         const allTracks = [];
         let url = new URL(baseUrl);
         
+        const fields = url.searchParams.get('fields');
+        if (fields && !fields.includes('UploadedAt')) {
+            url.searchParams.set('fields', fields + ',UploadedAt');
+            console.log('[TMX] Stats: Added UploadedAt to API fields');
+        }
+
         // Ensure count is 1000 for pagination
         if (!url.searchParams.has('count') || parseInt(url.searchParams.get('count'), 10) < 1000) {
             url.searchParams.set('count', '1000');
@@ -991,6 +1802,7 @@
             if (currentApiUrl !== TMX_STATE.lastApiUrl) {
                 console.log('[TMX] 🔄 API URL changed via UI check, resetting count...');
                 TMX_STATE.realCount = null;
+                CACHED_TRACK_DATA = null;
                 TMX_STATE.lastApiUrl = currentApiUrl;  // Update the stored URL
             }
             updateStatus();
@@ -1068,6 +1880,7 @@
         window.addEventListener('tmx-api-captured', (e) => {
           console.log('[TMX] 📡 API URL captured via event:', e.detail.url);
           TMX_STATE.realCount = null;
+          CACHED_TRACK_DATA = null;
           TMX_STATE.isFetchingCount = true;
           updateStatus(true);
           setTimeout(() => {

@@ -462,119 +462,179 @@
         };
     }
 
-    // Hype Meter Calculation (0-100 score + trend)
-// Updated: Hype Meter Calculation (dynamic bucketing based on age)
-function calculateHypeScore(metadata, replays) {
-    const now = new Date();
-    const uploadDate = new Date(metadata.UploadedAt); // Assumes ISO from API; fallback to now if invalid
-    const ageDays = Math.max(1, Math.ceil((now - uploadDate) / (24 * 60 * 60 * 1000))); // Min 1 day to avoid div0
-    const ageMs = now - uploadDate;
-    const ageHours = Math.ceil(ageMs / 3600000);
-
-    // Gather ALL activity (no 30-day filter—now age-normalized)
-    const totalReplays = replays.length;
-    const totalAwards = metadata.Awards || 0;
-    const totalComments = metadata.Comments || 0;
-    // Normalize to "per day" rates for fair scaling
-    const replayRate = totalReplays / ageDays;
-    const awardRate = totalAwards / ageDays;
-    const commentRate = totalComments / ageDays;
-    // Base activity score (weighted, but rate-based)
-    const baseActivity = (replayRate * 0.5 + awardRate * 10 + commentRate * 5);
-    // Newbie Boost - Sigmoid decay: High on day 1 (e.g., 2x), fades to 1x by day 30
-    const decayFactor = 1 + Math.exp(-ageDays / 10); // Starts ~2.7x, drops to ~1.1x by day 30, ~1x after
-    const boostedActivity = baseActivity * decayFactor;
-    // Age-Normalized Scaling - "Expected" max for age (e.g., softer for new tracks)
-    const expectedMax = Math.min(100 + (ageDays * 2), 500); // Grows slowly: ~100 on day 1, up to 500 for old tracks
-    let hype = Math.min(Math.round((boostedActivity / expectedMax) * 100), 100);
-    // Fallback: Min 5 for total zero-activity (avoids flat 0)
-    if (totalReplays + totalAwards + totalComments === 0) hype = 5;
-
-    // Dynamic bucketing: Days (<7d), Weeks (7-30d), Months (>30d)
-    let bucketSizeDays, numBuckets, bucketType, trendData = [], labels = [];
-    if (ageHours < 24) {
-        // Hourly buckets: last 24 hours (or all if shorter)
-        numBuckets = Math.min(24, ageHours);
-        bucketType = 'hour';
-        const hourly = {};
+    // Enhanced Hype Meter Calculation (0-100 score + trend)
+    function calculateHypeScore(metadata, replays) {
+        const now = new Date();
+        const uploadDate = new Date(metadata.UploadedAt);
+        const ageDays = Math.max(0.25, (now - uploadDate) / (24 * 60 * 60 * 1000));
+        const ageHours = Math.ceil((now - uploadDate) / 3600000);
+        
+        // === 1. TIME-WINDOWED ACTIVITY (Multi-tier decay) ===
+        const windows = {
+            ultraRecent: { hours: 48, weight: 0.50, replays: 0 },
+            recent:      { hours: 72, weight: 0.30, replays: 0 },
+            shortTerm:   { hours: 168, weight: 0.15, replays: 0 }, // 7 days
+            midTerm:     { hours: 720, weight: 0.04, replays: 0 }, // 30 days
+            longTerm:    { hours: Infinity, weight: 0.01, replays: 0 }
+        };
+        
+        // Distribute replays into time windows
         replays.forEach(r => {
-            const hour = new Date(r.ReplayAt).toISOString().slice(0,13);
-            hourly[hour] = (hourly[hour] || 0) + 1;
+            const hoursSince = (now - new Date(r.ReplayAt)) / 3600000;
+            for (let [key, window] of Object.entries(windows)) {
+                if (hoursSince < window.hours) {
+                    window.replays++;
+                    break;
+                }
+            }
         });
-        const sortedHours = Object.entries(hourly).sort(([a], [b]) => a.localeCompare(b));
-        trendData = sortedHours.slice(-numBuckets).map(([, count]) => count);
-        const actualBuckets = trendData.length;
-        labels = trendData.map((_, i) => `H-${actualBuckets - i}`);
-    } else if (ageDays < 7) {
-        // Daily buckets for very new tracks: last 7 days (or all if shorter)
-        bucketSizeDays = 1;
-        numBuckets = Math.min(7, ageDays);
-        bucketType = 'day';
-        const daily = {};
-        replays.forEach(r => {
-            const day = new Date(r.ReplayAt).toISOString().slice(0, 10);
-            daily[day] = (daily[day] || 0) + 1;
-        });
-        const sortedDays = Object.entries(daily).sort(([a], [b]) => a.localeCompare(b));
-        trendData = sortedDays.slice(-numBuckets).map(([, count]) => count);
-        const actualBuckets = trendData.length;
-        labels = trendData.map((_, i) => `D-${actualBuckets - i}`);
-    } else if (ageDays <= 30) {
-        // Weekly buckets: last 4 weeks (or all if shorter)
-        bucketSizeDays = 7;
-        numBuckets = Math.min(4, Math.ceil(ageDays / 7));
-        bucketType = 'week';
-        const weekly = {};
-        replays.forEach(r => {
-            const weekStart = new Date(r.ReplayAt);
-            weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-            const weekKey = weekStart.toISOString().slice(0, 10);
-            weekly[weekKey] = (weekly[weekKey] || 0) + 1;
-        });
-        const sortedWeeks = Object.entries(weekly).sort(([a], [b]) => a.localeCompare(b));
-        trendData = sortedWeeks.slice(-numBuckets).map(([, count]) => count);
-        const actualBuckets = trendData.length;
-        labels = trendData.map((_, i) => `W-${actualBuckets - i}`);
-    } else {
-        // Monthly buckets: last 6 months (original logic)
-        bucketSizeDays = 30;
-        numBuckets = 6;
-        bucketType = 'month';
-        const monthly = {};
-        replays.forEach(r => {
-            const month = new Date(r.ReplayAt).toISOString().slice(0, 7);
-            monthly[month] = (monthly[month] || 0) + 1;
-        });
-        const sortedMonths = Object.entries(monthly).sort(([a], [b]) => a.localeCompare(b));
-        trendData = sortedMonths.slice(-numBuckets).map(([, count]) => count);
-        const actualBuckets = trendData.length;
-        labels = trendData.map((_, i) => `M-${actualBuckets - i}`);
+        
+        // Calculate weighted activity score (4 points per replay)
+        let activityScore = Object.values(windows).reduce((sum, w) => 
+            sum + (w.replays * w.weight * 4), 0
+        );
+        
+        // === 2. AWARDS & COMMENTS (weighted higher, distributed by recent activity) ===
+        const totalAwards = metadata.Awards || 0;
+        const totalComments = metadata.Comments || 0;
+        const totalReplays = replays.length;
+        
+        // Estimate recent awards/comments based on replay distribution
+        const recentReplayRatio = totalReplays > 0 
+            ? (windows.ultraRecent.replays + windows.recent.replays) / totalReplays 
+            : 0.5; // Assume 50% recent if no replays
+        
+        const recentAwardBonus = totalAwards * recentReplayRatio * 5;
+        const recentCommentBonus = totalComments * recentReplayRatio * 2;
+        
+        activityScore += recentAwardBonus + recentCommentBonus;
+        
+        // === 3. VELOCITY BONUS (acceleration/deceleration) ===
+        const velocity = windows.ultraRecent.replays > 0 
+            ? windows.ultraRecent.replays / Math.max(windows.recent.replays - windows.ultraRecent.replays, 0.1)
+            : 0;
+        
+        const velocityMultiplier = 1 + Math.min(Math.max(velocity - 1, -0.3), 1.0) * 0.3; // -10% to +30%
+        activityScore *= velocityMultiplier;
+        
+        // === 4. AGE MULTIPLIER (Newbie boost with smooth decay) ===
+        let ageFactor;
+        if (ageDays < 1) {
+            ageFactor = 3.0; // Brand new: 3x
+        } else if (ageDays < 7) {
+            ageFactor = 1 + (2 * Math.exp(-ageDays / 2.5)); // Steep: 3x → 1.2x
+        } else {
+            ageFactor = 1 + (0.5 * Math.exp(-ageDays / 30)); // Gentle: 1.5x → 1x
+        }
+        
+        activityScore *= ageFactor;
+        
+        // === 5. QUALITY PENALTIES (anti-spam) ===
+        if (totalReplays > 0) {
+            const uniqueRatio = new Set(replays.map(r => r.User.UserId)).size / totalReplays;
+            if (uniqueRatio < 0.4) {
+                activityScore *= 0.7; // Penalty for bot/spam patterns
+            }
+        }
+        
+        // === 6. NORMALIZE TO 0-100 ===
+        // Target: 10 replays in 6h on new map = ~100 hype
+        const expectedMax = 40;
+        let hype = Math.min(Math.round((activityScore / expectedMax) * 100), 100);
+        
+        // === 7. BASELINE HANDLING ===
+        const hasActivity = totalReplays > 0 || totalAwards > 0 || totalComments > 0;
+        if (!hasActivity) {
+            hype = 5; // Truly inactive
+        } else if (hype < 1) {
+            hype = 1; // Active maps minimum
+        }
+        
+        // === 8. TREND VISUALIZATION (Dynamic bucketing) ===
+        let bucketType, trendData = [], labels = [];
+        
+        if (ageHours < 24) {
+            // Hourly buckets
+            bucketType = 'hour';
+            const numBuckets = Math.min(24, ageHours);
+            const hourly = {};
+            replays.forEach(r => {
+                const hour = new Date(r.ReplayAt).toISOString().slice(0, 13);
+                hourly[hour] = (hourly[hour] || 0) + 1;
+            });
+            const sorted = Object.entries(hourly).sort(([a], [b]) => a.localeCompare(b));
+            trendData = sorted.slice(-numBuckets).map(([, count]) => count);
+            labels = trendData.map((_, i) => `H-${trendData.length - i}`);
+        } else if (ageDays < 7) {
+            // Daily buckets
+            bucketType = 'day';
+            const numBuckets = Math.min(7, Math.ceil(ageDays));
+            const daily = {};
+            replays.forEach(r => {
+                const day = new Date(r.ReplayAt).toISOString().slice(0, 10);
+                daily[day] = (daily[day] || 0) + 1;
+            });
+            const sorted = Object.entries(daily).sort(([a], [b]) => a.localeCompare(b));
+            trendData = sorted.slice(-numBuckets).map(([, count]) => count);
+            labels = trendData.map((_, i) => `D-${trendData.length - i}`);
+        } else if (ageDays <= 30) {
+            // Weekly buckets
+            bucketType = 'week';
+            const numBuckets = Math.min(4, Math.ceil(ageDays / 7));
+            const weekly = {};
+            replays.forEach(r => {
+                const weekStart = new Date(r.ReplayAt);
+                weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+                const weekKey = weekStart.toISOString().slice(0, 10);
+                weekly[weekKey] = (weekly[weekKey] || 0) + 1;
+            });
+            const sorted = Object.entries(weekly).sort(([a], [b]) => a.localeCompare(b));
+            trendData = sorted.slice(-numBuckets).map(([, count]) => count);
+            labels = trendData.map((_, i) => `W-${trendData.length - i}`);
+        } else {
+            // Monthly buckets
+            bucketType = 'month';
+            const monthly = {};
+            replays.forEach(r => {
+                const month = new Date(r.ReplayAt).toISOString().slice(0, 7);
+                monthly[month] = (monthly[month] || 0) + 1;
+            });
+            const sorted = Object.entries(monthly).sort(([a], [b]) => a.localeCompare(b));
+            trendData = sorted.slice(-6).map(([, count]) => count);
+            labels = trendData.map((_, i) => `M-${trendData.length - i}`);
+        }
+        
+        // === 9. TREND LABEL ===
+        const growth = trendData.length > 1 
+            ? ((trendData[trendData.length - 1] / Math.max(trendData[0], 0.1)) * 100 - 100) 
+            : 0;
+        
+        let trendLabel;
+        if (ageDays < 7) {
+            // New maps: simple emerging/quiet logic
+            trendLabel = totalReplays > (ageDays * 0.5) ? 'Emerging 📈' : 'Quiet 🕐';
+        } else if (velocity > 1.5) {
+            trendLabel = 'Exploding 🚀';
+        } else if (growth > 20) {
+            trendLabel = 'Growing 📈';
+        } else if (growth < -20) {
+            trendLabel = 'Fading 📉';
+        } else {
+            trendLabel = 'Stable ⚖️';
+        }
+        
+        console.log(`[TMX] Hype: ${hype}/100 (${trendLabel}, velocity: ${velocity.toFixed(2)}x, age: ${Math.round(ageDays)}d)`);
+        
+        return {
+            score: hype,
+            trendData,
+            labels,
+            label: trendLabel,
+            bucketType,
+            ageDays: Math.round(ageDays),
+            velocity: velocity.toFixed(2)
+        };
     }
-
-    // Growth calc (relative to first in trendData)
-    const growth = trendData.length > 1 ? ((trendData[trendData.length - 1] / trendData[0]) * 100 - 100) : 0;
-    let trendLabel;
-    if (ageDays < 30) {
-        trendLabel = totalReplays > (ageDays * 0.5) ? 'Emerging 📈' : 'Quiet 🕐'; // Custom for newbies
-    } else if (growth > 20) {
-        trendLabel = 'Exploding 🚀';
-    } else if (growth > 0) {
-        trendLabel = 'Growing 📈';
-    } else if (growth < -20) {
-        trendLabel = 'Fading 📉';
-    } else {
-        trendLabel = 'Stable ⚖️';
-    }
-    console.log(`[TMX] Hype: ${hype}/100 (${trendLabel}, +${Math.round(growth)}% growth, age: ${ageDays}d, buckets: ${bucketType})`);
-    return { 
-        score: hype, 
-        trendData, 
-        labels, 
-        label: trendLabel,
-        bucketType,
-        ageDays 
-    };
-}
 
     // ============================================================================
     // UI CREATION - INTEGRATED STATISTICS CARD
@@ -692,7 +752,7 @@ function calculateHypeScore(metadata, replays) {
                         <svg width="120" height="120" viewBox="0 0 120 120">
                             <circle cx="60" cy="60" r="54" fill="none" stroke="#e0e0e0" stroke-width="8"/>
                             <circle cx="60" cy="60" r="54" fill="none" stroke="var(--primary-color)" stroke-width="8"
-                                    stroke-dasharray="${(hypeData.score * 3.14)} 314" stroke-linecap="round" transform="rotate(-90 60 60)"/>
+                                    stroke-dasharray="${((hypeData.score / 100) * 339)} 339" stroke-linecap="round" transform="rotate(-90 60 60)"/>
                             <text x="60" y="60" text-anchor="middle" dy=".3em"
                                 style="font-size: 28px; font-weight: bold; fill: var(--primary-color);">
                                 ${hypeData.score}
@@ -1258,19 +1318,34 @@ function renderHypeSparkline(hypeData) { // Now accepts full hypeData object
     }
 
     async function loadAndRenderStats() {
-        const statsCard = createStatsCard();
+        let statsCard = document.getElementById('tmx-stats-card');
+        const isRefresh = !!statsCard; // Track if this is a refresh (for logging if needed)
         
-        // Insert stats card after the Replays card
-        const replaysCard = document.getElementById('Replays');
-        if (replaysCard) {
-            replaysCard.parentNode.insertBefore(statsCard, replaysCard.nextSibling);
-        } else {
-            // Fallback: insert before comments
-            const commentsCard = document.getElementById('Comments');
-            if (commentsCard) {
-                commentsCard.parentNode.insertBefore(statsCard, commentsCard);
+        if (!statsCard) {
+            statsCard = createStatsCard();
+            
+            // Insert stats card after the Replays card
+            const replaysCard = document.getElementById('Replays');
+            if (replaysCard) {
+                replaysCard.parentNode.insertBefore(statsCard, replaysCard.nextSibling);
+            } else {
+                // Fallback: insert before comments
+                const commentsCard = document.getElementById('Comments');
+                if (commentsCard) {
+                    commentsCard.parentNode.insertBefore(statsCard, commentsCard);
+                }
             }
         }
+        
+        const contentDiv = statsCard.querySelector('#tmx-stats-content');
+        
+        // Always show loading state on load/refresh
+        contentDiv.innerHTML = `
+            <div style="text-align: center; padding: 40px;">
+                <i class="fas fa-spinner fa-spin fa-2x" style="color: var(--primary-color);"></i>
+                <p style="margin-top: 15px;">Loading statistics...</p>
+            </div>
+        `;
         
         try {
             // Load metadata and replays
@@ -1282,7 +1357,6 @@ function renderHypeSparkline(hypeData) { // Now accepts full hypeData object
             const hypeData = calculateHypeScore(TMX_STATE.trackMetadata, TMX_STATE.replaysData);
             
             // Render content (pass hypeData)
-            const contentDiv = document.getElementById('tmx-stats-content');
             contentDiv.innerHTML = renderStatsContent(TMX_STATE.trackMetadata, TMX_STATE.statsCalculated, hypeData);
             
             // Render charts after a short delay to ensure canvas is in DOM
@@ -1304,7 +1378,7 @@ function renderHypeSparkline(hypeData) { // Now accepts full hypeData object
             
         } catch (error) {
             console.error('[TMX] Error loading stats:', error);
-            document.getElementById('tmx-stats-content').innerHTML = `
+            contentDiv.innerHTML = `
                 <div style="text-align: center; padding: 40px; color: #ff6666;">
                     <i class="fas fa-exclamation-triangle fa-2x"></i>
                     <p style="margin-top: 15px;">Failed to load statistics</p>

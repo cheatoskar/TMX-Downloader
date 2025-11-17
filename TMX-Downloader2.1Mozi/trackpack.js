@@ -36,9 +36,6 @@
 (function() {
     'use strict';
     
-    // Cross-browser runtime API
-    const runtime = typeof browser !== 'undefined' ? browser : chrome;
-    
     // ============================================================================
     // STATE MANAGEMENT
     // ============================================================================
@@ -88,6 +85,45 @@
             host: 'https://nations.tm-exchange.com'
         }
     };
+
+    // Proxy helpers
+    async function proxyFetchJson(url) {
+        return new Promise((resolve, reject) => {
+            chrome.runtime.sendMessage({action: 'fetchApi', url}, (res) => {
+                if (chrome.runtime.lastError) {
+                    reject(chrome.runtime.lastError);
+                } else if (res.success) {
+                    resolve(res.data);
+                } else {
+                    reject(new Error(res.error));
+                }
+            });
+        });
+    }
+
+    async function proxyFetchBinary(url) {
+        return new Promise((resolve, reject) => {
+            chrome.runtime.sendMessage({action: 'fetchBinary', url}, (res) => {
+                if (chrome.runtime.lastError) {
+                    reject(chrome.runtime.lastError);
+                } else if (res.success) {
+                    try {
+                        const binaryString = atob(res.base64);
+                        const bytes = new Uint8Array(binaryString.length);
+                        for (let i = 0; i < binaryString.length; i++) {
+                            bytes[i] = binaryString.charCodeAt(i);
+                        }
+                        const blob = new Blob([bytes.buffer], {type: 'application/octet-stream'});
+                        resolve(blob);
+                    } catch (e) {
+                        reject(e);
+                    }
+                } else {
+                    reject(new Error(res.error));
+                }
+            });
+        });
+    }
 
     // ============================================================================
     // CORE API URL RETRIEVAL
@@ -180,7 +216,7 @@
         if (window.JSZip) return resolve();
 
         const script = document.createElement('script');
-        script.src = runtime.runtime.getURL('jszip.min.js');
+        script.src = chrome.runtime.getURL('jszip.min.js');
         script.onload = resolve;
         script.onerror = () => reject(new Error('Failed to load JSZip'));
         document.head.appendChild(script);
@@ -199,9 +235,7 @@
         try {
             const urlObj = new URL(apiUrl);
             urlObj.searchParams.set('count', '40');
-            const response = await fetch(urlObj.toString(), { credentials: 'include' });
-            if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            const data = await response.json();
+            const data = await proxyFetchJson(urlObj.toString());
             const results = data.Results || [];
             const more = data.More || false;
             return more ? '40+' : results.length.toString();
@@ -640,22 +674,19 @@
                     
                     try {
                         const fileUrl = `${exchange.host}/trackgbx/${track.TrackId}`;
-                        const response = await fetch(fileUrl, { signal, credentials: 'include' });
-                        if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                        const arrayBuffer = await response.arrayBuffer();
+                        const blob = await proxyFetchBinary(fileUrl);
                         const filename = sanitizeFilename(`${track.TrackName} by ${track.Uploader?.Name || 'Unknown'}.gbx`);
                         
                         if (createZip) {
                             // Create exchange-specific folder
                             const folderPath = `${exchange.name}/${packFolder}/${filename}`;
-                            zip.file(folderPath, arrayBuffer);
+                            zip.file(folderPath, blob);
                             
                             if (includeMetadata) {
                                 const metaPath = `${exchange.name}/${packFolder}/${filename.replace('.gbx', '.json')}`;
                                 zip.file(metaPath, JSON.stringify({...track, pack: packDetails}));
                             }
                         } else {
-                            const blob = new Blob([arrayBuffer]);
                             const url = URL.createObjectURL(blob);
                             const a = document.createElement('a');
                             a.href = url;
@@ -899,9 +930,7 @@
             
             console.log(`[TMX-PACK] Fetching page ${pageNum} from ${url}...`);
             
-            const response = await fetch(url.toString(), { signal, credentials: 'include' });
-            if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            const data = await response.json();
+            const data = await proxyFetchJson(url.toString());
             const results = data.Results || [];
             
             if (results.length === 0) {
@@ -948,9 +977,7 @@
             
             console.log(`[TMX-PACK] Fetching tracks page ${pageNum}...`);
             
-            const response = await fetch(url.toString(), { signal, credentials: 'include' });
-            if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            const data = await response.json();
+            const data = await proxyFetchJson(url.toString());
             const results = data.Results || [];
             
             if (results.length === 0) {
@@ -977,9 +1004,7 @@
 
     async function fetchPackDetails(packId, exchange) {
         const url = `${exchange.apiBase}?id=${packId}&fields=PackName%2CCreator.Name`;
-        const response = await fetch(url.toString(), { credentials: 'include' });
-        if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        const data = await response.json();
+        const data = await proxyFetchJson(url.toString());
         return data.Results?.[0] || { PackName: `Pack_${packId}`, Creator: { Name: 'Unknown' } };
     }
 

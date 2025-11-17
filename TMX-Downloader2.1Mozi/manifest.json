@@ -57,6 +57,41 @@
       "css": ["styles.css"],
       "js": ["jszip.min.js", "chart.min.js", "trackshow.js"],
       "run_at": "document_end"
+    },
+    {
+      "matches": [
+        "*://tmnf.exchange/trackbeta*",
+        "*://tmuf.exchange/trackbeta*",
+        "*://original.tm-exchange.com/trackbeta*",
+        "*://sunrise.tm-exchange.com/trackbeta*",
+        "*://nations.tm-exchange.com/trackbeta*"
+      ],
+      "js": ["beta-notice.js"],  
+      "run_at": "document_end"
+    },
+    {
+      "matches": [
+        "*://tmnf.exchange/usersearch*",
+        "*://tmuf.exchange/usersearch*",
+        "*://original.tm-exchange.com/usersearch*",
+        "*://sunrise.tm-exchange.com/usersearch*",
+        "*://nations.tm-exchange.com/usersearch*"
+      ],
+      "css": ["styles.css"],
+      "js": ["users.js"],
+      "run_at": "document_end"
+    },
+    {
+      "matches": [
+        "*://tmnf.exchange/usershow*",
+        "*://tmuf.exchange/usershow*",
+        "*://original.tm-exchange.com/usershow*",
+        "*://sunrise.tm-exchange.com/usershow*",
+        "*://nations.tm-exchange.com/usershow*"
+      ],
+      "css": ["styles.css"],
+      "js": ["users.js"],
+      "run_at": "document_end"
     }
   ],
 
