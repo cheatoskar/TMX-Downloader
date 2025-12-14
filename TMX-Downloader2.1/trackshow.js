@@ -941,7 +941,7 @@
                 margin-top: 2px;
             }
             
-            /* NEW: Hype Sparkline Style */
+            /* Hype Sparkline Style */
             .tmx-hype-spark {
                 height: 100px !important;
                 margin-top: 10px;
@@ -963,35 +963,15 @@
     // ============================================================================
     // CHART RENDERING
     // ============================================================================
-    async function loadChartJS() {
-        return new Promise((resolve, reject) => {
-            if (window.Chart) return resolve();
-            
-            // Check if Chart.js is already on the page
-            const existingScript = document.querySelector('script[src*="chart"]');
-            if (existingScript) {
-                existingScript.addEventListener('load', resolve);
-                return;
-            }
-            
-            // Load from extension bundle
-            const script = document.createElement('script');
-            script.src = chrome.runtime.getURL('chart.min.js');
-            script.onload = () => {
-                console.log('[TMX] Chart.js loaded successfully');
-                resolve();
-            };
-            script.onerror = () => {
-                console.error('[TMX] Failed to load Chart.js');
-                reject(new Error('Failed to load Chart.js'));
-            };
-            document.head.appendChild(script);
-        });
-    }
     function renderTimeChart(stats) {
         const canvas = document.getElementById('tmx-time-chart');
         if (!canvas) {
             console.error('[TMX] Canvas not found');
+            return;
+        }
+
+        if (typeof Chart === 'undefined') {
+            console.error('[TMX] Chart.js library missing. Check manifest loading order.');
             return;
         }
         
@@ -1084,35 +1064,40 @@
         
 }
 
-    // Hype Sparkline Render
-// Updated: Hype Sparkline Render (dynamic labels and axis based on bucketType)
-function renderHypeSparkline(hypeData) { // Now accepts full hypeData object
+    // Hype Sparkline Render (dynamic labels and axis based on bucketType)
+    function renderHypeSparkline(hypeData) {
     const canvas = document.getElementById('tmx-hype-spark');
     if (!canvas) return;
-   
-    const { trendData, labels, bucketType, ageDays } = hypeData;
-    // NEW: Hide if not enough data (e.g., <2 points)
-    const hasEnoughData = trendData.length >= 2;
-    if (!hasEnoughData) {
+
+    const { trendData, labels, bucketType } = hypeData;
+
+    // 1. Check data sufficiency
+    if (!trendData || trendData.length < 2) {
         canvas.style.display = 'none';
-        console.log(`[TMX] Sparkline: Hidden (low data: ${trendData.length} points)`);
+        console.log(`[TMX] Sparkline: Hidden (low data: ${trendData ? trendData.length : 0} points)`);
         return;
     }
-   
-    // Show canvas and render
+
+    // 2. Prepare Canvas
     canvas.style.display = 'block';
     const ctx = canvas.getContext('2d');
     canvas.width = 200;
     canvas.height = 100;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-   
-    // Simple canvas line if no Chart.js
-    if (!window.Chart) {
-        ctx.strokeStyle = 'var(--primary-color)';
+
+    // 3. Check if Chart.js is available (loaded via Manifest)
+    // Wir prüfen auf 'undefined', da es keine importierte Variable mehr ist, sondern global
+    if (typeof Chart === 'undefined') {
+        // --- FALLBACK: Manuelles Zeichnen (Simple Line) ---
+        console.warn('[TMX] Chart.js missing, using fallback renderer.');
+        
+        ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--primary-color') || '#007bff';
         ctx.lineWidth = 2;
         ctx.beginPath();
+        
         const maxVal = Math.max(...trendData, 1);
         const stepX = canvas.width / (trendData.length - 1 || 1);
+        
         trendData.forEach((val, i) => {
             const x = i * stepX;
             const y = canvas.height - (val / maxVal * (canvas.height - 20)) - 10;
@@ -1120,27 +1105,33 @@ function renderHypeSparkline(hypeData) { // Now accepts full hypeData object
             else ctx.lineTo(x, y);
         });
         ctx.stroke();
-       
+
         // Quick axes
         ctx.strokeStyle = '#ccc';
         ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.moveTo(0, canvas.height - 10); ctx.lineTo(canvas.width, canvas.height - 10); // X-axis
-        ctx.moveTo(10, 0); ctx.lineTo(10, canvas.height); // Y-axis
+        ctx.moveTo(0, canvas.height - 10); ctx.lineTo(canvas.width, canvas.height - 10);
+        ctx.moveTo(10, 0); ctx.lineTo(10, canvas.height);
         ctx.stroke();
         return;
     }
-   
-    // Full Chart.js mode
-    if (canvas.chart) canvas.chart.destroy();
-    const axisTitle = bucketType === 'hour' ? 'Recent Hours' : bucketType === 'day' ? 'Recent Days' : bucketType === 'week' ? 'Recent Weeks' : 'Recent Months';
+
+    // --- MAIN: Full Chart.js rendering ---
+    if (canvas.chart instanceof Chart) {
+        canvas.chart.destroy();
+    }
+
+    const axisTitle = bucketType === 'hour' ? 'Recent Hours' : 
+                      bucketType === 'day' ? 'Recent Days' : 
+                      bucketType === 'week' ? 'Recent Weeks' : 'Recent Months';
+
     canvas.chart = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: labels, // Dynamic labels
+            labels: labels,
             datasets: [{
                 data: trendData,
-                borderColor: 'var(--primary-color)',
+                borderColor: getComputedStyle(document.documentElement).getPropertyValue('--primary-color') || '#007bff',
                 backgroundColor: 'rgba(0, 123, 255, 0.1)',
                 tension: 0.4,
                 fill: true,
@@ -1150,6 +1141,7 @@ function renderHypeSparkline(hypeData) { // Now accepts full hypeData object
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            animation: false, // Performance Optimierung
             plugins: { legend: { display: false } },
             scales: {
                 x: {
@@ -1169,8 +1161,8 @@ function renderHypeSparkline(hypeData) { // Now accepts full hypeData object
             interaction: { intersect: false }
         }
     });
-   
-    console.log(`[TMX] Sparkline: Full chart with ${trendData.length} ${bucketType} points`);
+
+    console.log(`[TMX] Sparkline: Rendered with Chart.js (${trendData.length} points)`);
 }
 
     // ============================================================================
@@ -1360,33 +1352,36 @@ function renderHypeSparkline(hypeData) { // Now accepts full hypeData object
             contentDiv.innerHTML = renderStatsContent(TMX_STATE.trackMetadata, TMX_STATE.statsCalculated, hypeData);
             
             // Render charts after a short delay to ensure canvas is in DOM
-            loadChartJS().then(() => {
-                setTimeout(() => {
-                    renderTimeChart(TMX_STATE.statsCalculated);
-                    if (hypeData.trendData.length > 0) {
-                        renderHypeSparkline(hypeData); // Updated call
-                    }
-                }, 100);
-            }).catch(error => {
-                console.error('[TMX] Chart error:', error);
-                // Hide chart section if Chart.js fails
-                const canvas = document.getElementById('tmx-time-chart');
-                if (canvas) {
-                    canvas.closest('.tmx-stat-section').style.display = 'none';
+            setTimeout(() => {
+                        try {
+                            // Time Distribution Chart
+                            if (TMX_STATE.statsCalculated) {
+                                renderTimeChart(TMX_STATE.statsCalculated);
+                            }
+                            
+                            // Hype Sparkline
+                            if (hypeData && hypeData.trendData && hypeData.trendData.length > 0) {
+                                renderHypeSparkline(hypeData);
+                            }
+                        } catch (chartError) {
+                            console.error('[TMX] Error rendering charts:', chartError);
+                            // Optional: Canvas ausblenden bei Fehler
+                            const chartSection = document.getElementById('tmx-time-chart')?.closest('.tmx-stat-section');
+                            if (chartSection) chartSection.style.display = 'none';
+                        }
+                    }, 100);
+                    
+                } catch (error) {
+                    console.error('[TMX] Error loading stats:', error);
+                    contentDiv.innerHTML = `
+                        <div style="text-align: center; padding: 40px; color: #ff6666;">
+                            <i class="fas fa-exclamation-triangle fa-2x"></i>
+                            <p style="margin-top: 15px;">Failed to load statistics</p>
+                            <small>${error.message}</small>
+                        </div>
+                    `;
                 }
-            });
-            
-        } catch (error) {
-            console.error('[TMX] Error loading stats:', error);
-            contentDiv.innerHTML = `
-                <div style="text-align: center; padding: 40px; color: #ff6666;">
-                    <i class="fas fa-exclamation-triangle fa-2x"></i>
-                    <p style="margin-top: 15px;">Failed to load statistics</p>
-                    <small>${error.message}</small>
-                </div>
-            `;
-        }
-    }
+            }
 
     // ============================================================================
     // INITIALIZATION

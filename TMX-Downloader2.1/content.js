@@ -35,6 +35,8 @@
         isFetchingCount: false
     };
 
+    let CACHED_TRACK_DATA = null;
+
     // ============================================================================
     // CONFIGURATION
     // ============================================================================
@@ -474,16 +476,26 @@
                 
                 <!-- ZIP Options -->
                 <div class="tmx-option-group">
-                    <label>📦 Archive Options</label>
+                    <label>📦 Archive & Export</label>
                     <div class="tmx-checkbox-group">
                         <label class="tmx-interactive">
                             <input type="checkbox" id="createZip" checked>
-                            <span>Create ZIP archive (recommended)</span>
+                            <span>Create ZIP archive</span>
                         </label>
                         <label class="tmx-interactive">
                             <input type="checkbox" id="includeMetadata">
-                            <span>Include track metadata (JSON files)</span>
+                            <span>Include metadata (JSON)</span>
                         </label>
+                        <div style="margin-top: 8px; border-top: 1px solid var(--muted-border-color); padding-top: 8px;">
+                            <label class="tmx-interactive">
+                                <input type="checkbox" id="createIdTxt">
+                                <span>Create ID List (.txt)</span>
+                            </label>
+                            <label class="tmx-interactive" style="margin-left: 20px;">
+                                <input type="checkbox" id="idListOnly">
+                                <span style="color: #ffaa00;">Skip Map Download (Only IDs)</span>
+                            </label>
+                        </div>
                     </div>
                 </div>
                 
@@ -775,8 +787,6 @@ async function createStatisticsModal() {
 // ============================================================================
 // STATISTICS DATA PROCESSING
 // ============================================================================
-
-let CACHED_TRACK_DATA = null;
 
 async function fetchAndAnalyzeAllTracks() {
     const apiUrl = getApiUrlSafe();
@@ -1340,17 +1350,9 @@ function exportStatisticsJSON() {
         const startIndex = parseInt(document.getElementById('startIndex').value || '0', 10);
         const createZip = document.getElementById('createZip').checked;
         const includeMetadata = document.getElementById('includeMetadata').checked;
-        
-        console.log('[TMX] 🚀 Starting download');
-        console.log('[TMX] 🌐 Exchanges:', selectedExchanges.map(e => e.name).join(', '));
-        console.log('[TMX] 📋 Options:', { 
-            shuffleTracks, 
-            randomSelection, 
-            trackCount: trackCountInput || 'all', 
-            startIndex, 
-            createZip, 
-            includeMetadata 
-        });
+        const createIdTxt = document.getElementById('createIdTxt')?.checked;
+        const idListOnly = document.getElementById('idListOnly')?.checked;
+        const effectiveCreateIdTxt = idListOnly ? true : createIdTxt;
         
         // Prepare UI
         const startBtn = document.getElementById('startDownload');
@@ -1377,7 +1379,7 @@ function exportStatisticsJSON() {
         const signal = TMX_STATE.abortController.signal;
         
         let zip;
-        if (createZip) {
+        if (createZip && !idListOnly) {
             try {
                 await loadJSZip();
                 zip = new JSZip();
@@ -1404,11 +1406,9 @@ function exportStatisticsJSON() {
                 // Build API URL for this exchange
                 let currentApiUrl;
                 if (multiMode) {
-                    // Extract search parameters from current URL
                     const currentUrl = new URL(apiUrl || window.location.href);
                     const params = currentUrl.searchParams;
                     
-                    // Build new URL with same parameters
                     const newUrl = new URL(exchange.apiBase);
                     params.forEach((value, key) => {
                         newUrl.searchParams.set(key, value);
@@ -1426,12 +1426,10 @@ function exportStatisticsJSON() {
                 // Fetch tracks from this exchange
                 let exchangeTracks = [];
 
-                // Check if we can reuse cached data (only for single exchange mode, same URL)
                 if (!multiMode && currentApiUrl === getApiUrlSafe() && CACHED_TRACK_DATA && CACHED_TRACK_DATA.length > 0) {
                     console.log(`[TMX] 📦 Reusing ${CACHED_TRACK_DATA.length} cached tracks for download`);
                     exchangeTracks = [...CACHED_TRACK_DATA];
                     
-                    // If we need more tracks than cached, fetch additional
                     const effectiveMaxFetch = maxTrackCount === Infinity ? Infinity : (startIndex + maxTrackCount);
                     if (exchangeTracks.length < effectiveMaxFetch) {
                         console.log('[TMX] 🔄 Need more tracks than cached, fetching additional...');
@@ -1443,11 +1441,9 @@ function exportStatisticsJSON() {
                         const remainingTracks = await fetchAllTracks(urlObj.toString(), effectiveMaxFetch - exchangeTracks.length, signal);
                         exchangeTracks = [...exchangeTracks, ...remainingTracks];
                         
-                        // Update cache
                         CACHED_TRACK_DATA = exchangeTracks;
                     }
                 } else {
-                    // Multi-exchange mode or different URL - fetch fresh
                     console.log(`[TMX] 🔄 Fetching fresh tracks from ${exchange.name}...`);
                     const effectiveMaxFetch = maxTrackCount === Infinity ? Infinity : (startIndex + maxTrackCount);
                     exchangeTracks = await fetchAllTracks(currentApiUrl, effectiveMaxFetch, signal);
@@ -1460,10 +1456,23 @@ function exportStatisticsJSON() {
                     continue;
                 }
                 
-                // Apply startIndex and limit
                 exchangeTracks = exchangeTracks.slice(startIndex, startIndex + maxTrackCount);
+
+                if (idListOnly) {
+                    console.log(`[TMX] ⏭️ Skipping binary download for ${exchangeTracks.length} tracks (ID Only Mode)`);
+                    
+                    exchangeTracks.forEach(t => {
+                        allDownloadedTracks.push({...t, exchange: exchange.name});
+                    });
+                    
+                    updateProgress(
+                        ((i + 1) / selectedExchanges.length) * 100, 
+                        `Collected IDs from ${exchange.name}`
+                    );
+                    
+                    continue; 
+                }
                 
-                // Download tracks from this exchange
                 updateProgress(
                     ((i + 0.5) / selectedExchanges.length) * 100,
                     `Downloading from ${exchange.name}: 0/${exchangeTracks.length}`
@@ -1479,14 +1488,10 @@ function exportStatisticsJSON() {
                     
                     try {
                         const fileUrl = `${exchange.apiBase.replace('/api/tracks', '')}/trackgbx/${track.TrackId}`;
-                        
-                        // 🆕 Use proxy for binary to bypass CORS
                         const blob = await proxyFetchBinary(fileUrl);
-                        
                         const filename = sanitizeFilename(`${track.TrackName} by ${track.Uploader?.Name || 'Unknown'}.gbx`);
                         
                         if (createZip) {
-                            // Create exchange-specific folder
                             const folderPath = `${exchange.name}/${filename}`;
                             zip.file(folderPath, blob);
                             
@@ -1516,7 +1521,6 @@ function exportStatisticsJSON() {
                     }
                 }
                 
-                // Download with concurrency control
                 while (downloadQueue.length > 0 || activeDownloads.size > 0) {
                     if (signal.aborted) break;
                     
@@ -1548,11 +1552,30 @@ function exportStatisticsJSON() {
             if (createZip && includeMetadata && allDownloadedTracks.length > 0) {
                 zip.file('_all_metadata.json', JSON.stringify(allDownloadedTracks, null, 2));
             }
-            
+
+           if (effectiveCreateIdTxt && allDownloadedTracks.length > 0) {
+                const idListContent = allDownloadedTracks.map(t => t.TrackId).join('\n');
+                const txtFilename = multiMode ? 'track_ids.txt' : `${selectedExchanges[0]?.name || 'tmx'}_track_ids.txt`;
+
+                if (idListOnly || !createZip) {
+                    const blob = new Blob([idListContent], { type: 'text/plain' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = txtFilename;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                } else {
+                    // Ansonsten ins ZIP packen
+                    zip.file(txtFilename, idListContent);
+                }
+            }
+            // ----------------------------------------------------------------
+
             updateProgress(100, `✅ Complete! ${allDownloadedTracks.length} tracks downloaded from ${selectedExchanges.length} exchange(s).`);
             
             // Generate ZIP
-            if (createZip && allDownloadedTracks.length > 0) {
+            if (createZip && !idListOnly && allDownloadedTracks.length > 0) {
                 const content = await zip.generateAsync({ type: 'blob' });
                 const url = URL.createObjectURL(content);
                 const a = document.createElement('a');
@@ -1572,12 +1595,17 @@ function exportStatisticsJSON() {
                 alert(`❌ Download failed:\n${error.message}`);
             }
         } finally {
-            if (createZip && TMX_STATE.abortController?.signal.aborted && allDownloadedTracks.length > 0) {
+            if (createZip && !idListOnly && TMX_STATE.abortController?.signal.aborted && allDownloadedTracks.length > 0) {
                 updateProgress(0, 'Creating partial ZIP...');
                 try {
                     if (includeMetadata) {
                         zip.file('_all_metadata.json', JSON.stringify(allDownloadedTracks, null, 2));
                     }
+                    if (createIdTxt) {
+                         const idListContent = allDownloadedTracks.map(t => t.TrackId).join('\n');
+                         zip.file('track_ids_partial.txt', idListContent);
+                    }
+
                     const content = await zip.generateAsync({ type: 'blob' });
                     const url = URL.createObjectURL(content);
                     const a = document.createElement('a');
@@ -1589,6 +1617,12 @@ function exportStatisticsJSON() {
                     console.error('[TMX] ❌ Error generating partial ZIP:', genError);
                 }
             }
+            
+            if (startBtn) {
+                startBtn.textContent = '✅ Download Complete';
+                startBtn.style.background = 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)';
+            }
+            
             resetDownloadUI();
         }
     }

@@ -3,7 +3,7 @@
   "name": "TMX Universal Track Downloader",
   "version": "1.3.1",
   "description": "Bulk download tracks and trackpacks from all TMX exchanges",
-  "permissions": ["downloads", "scripting", "storage"],
+  "permissions": ["scripting"],
   "host_permissions": [
     "*://tmnf.exchange/*",
     "*://tmuf.exchange/*",

@@ -120,7 +120,7 @@
     // DATA FETCHING
     // ============================================================================
 
-    // NEW: Fetches the *list* of users on the /usersearch page
+    // Fetches the *list* of users on the /usersearch page
     async function fetchUsersData() {
         const exchange = getCurrentExchange();
         if (!exchange) return [];
@@ -214,7 +214,7 @@
             const latestTrack = (trackData.Results || [])[0];
             const lastTrackDate = latestTrack ? new Date(latestTrack.UploadedAt) : null;
 
-            // 4. NEW: Fetch latest replay upload activity (using your original two-step logic)
+            // 4. Fetch latest replay upload activity (using your original two-step logic)
             let lastReplayDate = null;
             try {
                 // Step 1: Get the TrackId of the newest submitted replay
@@ -253,7 +253,7 @@
                 // lastReplayDate remains null
             }
 
-            // 5. NEW: Determine the most recent activity date
+            // 5. Determine the most recent activity date
             let mostRecentActivityDate = null;
             if (lastTrackDate && lastReplayDate) {
                 mostRecentActivityDate = lastTrackDate > lastReplayDate ? lastTrackDate : lastReplayDate;
@@ -262,7 +262,7 @@
             }
 
             return {
-                lastActivityDate: mostRecentActivityDate, // NEW
+                lastActivityDate: mostRecentActivityDate,
                 replayScore: lbStats.ReplayScore || 0,
                 position: lbStats.Position || 999999,
                 delta: lbStats.Delta || 0,
@@ -449,7 +449,7 @@
     // UI CREATION - USER SEARCH PAGE (/usersearch)
     // ============================================================================
     
-    // NEW: Injects the leaderboard card on /usersearch
+    // Injects the leaderboard card on /usersearch
     function injectLeaderboardCard(usersList) {
         if (usersList.length === 0) return;
 
@@ -465,7 +465,7 @@
 
         const card = document.createElement('div');
         card.className = 'card';
-        card.id = 'tmx-user-leaderboard-card'; // NEW ID
+        card.id = 'tmx-user-leaderboard-card';
         card.innerHTML = `
             <div class="card-header">
                 <i class="fas fa-chart-line"></i> Top Stats (from loaded ${usersList.length} users)
