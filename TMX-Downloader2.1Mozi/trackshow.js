@@ -964,29 +964,12 @@
     // CHART RENDERING
     // ============================================================================
     async function loadChartJS() {
-        return new Promise((resolve, reject) => {
-            if (window.Chart) return resolve();
-            
-            // Check if Chart.js is already on the page
-            const existingScript = document.querySelector('script[src*="chart"]');
-            if (existingScript) {
-                existingScript.addEventListener('load', resolve);
-                return;
-            }
-            
-            // Load from extension bundle
-            const script = document.createElement('script');
-            script.src = chrome.runtime.getURL('chart.min.js');
-            script.onload = () => {
-                console.log('[TMX] Chart.js loaded successfully');
-                resolve();
-            };
-            script.onerror = () => {
-                console.error('[TMX] Failed to load Chart.js');
-                reject(new Error('Failed to load Chart.js'));
-            };
-            document.head.appendChild(script);
-        });
+        // Chart.js is bundled with this extension (chart.min.js, declared in the
+        // manifest's content_scripts) and is already present in this world.
+        // Nothing is fetched from a remote origin.
+        return window.Chart
+            ? Promise.resolve()
+            : Promise.reject(new Error('Bundled Chart.js library failed to load'));
     }
     function renderTimeChart(stats) {
         const canvas = document.getElementById('tmx-time-chart');
@@ -1222,15 +1205,12 @@ function renderHypeSparkline(hypeData) { // Now accepts full hypeData object
     // JSZIP LOADER
     // ============================================================================
     async function loadJSZip() {
-        return new Promise((resolve, reject) => {
-            if (window.JSZip) return resolve();
-            
-            const script = document.createElement('script');
-            script.src = chrome.runtime.getURL('jszip.min.js');
-            script.onload = () => resolve();
-            script.onerror = () => reject(new Error('Failed to load JSZip'));
-            document.head.appendChild(script);
-        });
+        // JSZip is bundled with this extension (jszip.min.js, declared in the
+        // manifest's content_scripts) and is already present in this world.
+        // Nothing is fetched from a remote origin.
+        return window.JSZip
+            ? Promise.resolve()
+            : Promise.reject(new Error('Bundled JSZip library failed to load'));
     }
 
     // ============================================================================

@@ -1,0 +1,8 @@
+# Third-party library builds must stay byte-identical to the upstream release.
+# Without this, a Windows checkout rewrites LF to CRLF and the files no longer
+# match the official distribution - which is precisely what got the add-on
+# rejected by Mozilla ("Third party library information missing").
+*.min.js binary
+
+# Generated data file: keep it stable across platforms too.
+exclusions-data.js -text

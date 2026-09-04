@@ -216,3 +216,20 @@ This project is MIT licensed. See [LICENSE](LICENSE) for details.
 ---
 
 *Last updated: November 15, 2025* | *Version: 1.0.0*
+
+## Maintainers: refreshing the cheated-map list
+
+Search results and track pages are annotated from the community exclusion
+sheet of the 100% TMX Project. That list is **baked into the extension** as
+`exclusions-data.js` so the add-on needs no network access and no host
+permission for Google Docs.
+
+Refresh it before cutting a release:
+
+```bash
+node tools/build-exclusions.mjs
+```
+
+It pulls every per-exchange tab plus the cross-exchange hidden-tracks tab,
+and rewrites `exclusions-data.js` in both the Chrome and the Firefox build.
+The sheet stays the source of truth; nothing is edited by hand.

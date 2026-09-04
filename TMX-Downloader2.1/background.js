@@ -1,34 +1,7 @@
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'injectFetchOverride') {
-    chrome.scripting.executeScript({
-      target: { tabId: sender.tab.id },
-      world: 'MAIN',
-      func: () => {
-        const originalFetch = window.fetch;
-        window.fetch = function(...args) {
-          const url = args[0] instanceof Request ? args[0].url : args[0];
-          if (typeof url === 'string') {
-            if (url.includes('/api/tracks')) {
-              // Existing track logic
-              const absoluteUrl = url.startsWith('http') ? url : new URL(url, window.location.origin).href;
-              document.documentElement.setAttribute('data-tmx-api-url', absoluteUrl);
-              window.dispatchEvent(new CustomEvent('tmx-api-captured', { detail: { url: absoluteUrl } }));
-              console.log('[TMX Fetch Intercept] ✅ Tracks Captured:', absoluteUrl);
-            } else if (url.includes('/api/trackpacks')) {
-              // 🆕 New: Pack interception
-              const absoluteUrl = url.startsWith('http') ? url : new URL(url, window.location.origin).href;
-              document.documentElement.setAttribute('data-tmx-pack-api-url', absoluteUrl);
-              window.dispatchEvent(new CustomEvent('tmx-pack-api-captured', { detail: { url: absoluteUrl } }));
-              console.log('[TMX Fetch Intercept] ✅ Packs Captured:', absoluteUrl);
-            }
-          }
-          return originalFetch.apply(this, args);
-        };
-        console.log('[TMX] Fetch interceptor installed');
-      }
-    }).then(() => sendResponse({success: true})).catch((error) => sendResponse({success: false, error: error.message}));
-    return true;
-  }
+  // The search URL is read from the Resource Timing API in the content
+  // scripts, so nothing is injected from here and no "scripting"
+  // permission is needed.
 
     // Existing fetchApi & fetchBinary (unchanged)
   if (request.action === 'fetchApi') {

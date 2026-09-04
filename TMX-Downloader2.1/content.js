@@ -1,19 +1,8 @@
 // ============================================================================
-// PART 1: EARLY INJECTION - Runs before page scripts
+// The search URL this page used is read from the Resource Timing API when it is
+// needed (see findApiUrlFromTimings). Nothing is hooked and no script is
+// injected into the page.
 // ============================================================================
-(function() {
-    'use strict';
-    
-    chrome.runtime.sendMessage({action: 'injectFetchOverride'}, (response) => {
-        if (chrome.runtime.lastError) {
-            console.error('[TMX] Message error:', chrome.runtime.lastError);
-        } else if (response.success) {
-            console.log('[TMX] ✅ Fetch interceptor installed via background');
-        } else {
-            console.error('[TMX] ❌ Failed to inject interceptor:', response.error);
-        }
-    });
-})();
 
 // ============================================================================
 // PART 2: SCRIPT - Runs after DOM is ready
@@ -28,6 +17,7 @@
         lastApiUrl: null,
         hasCapturedUrl: false,
         isInitialized: false,
+        dropdownWatcher: null,
         currentExchange: null,
         uiCheckInterval: null,
         progress: { current: 0, total: 0 },
@@ -143,29 +133,70 @@
         return selected;
     }
 
-    function getApiUrlSafe() {
-        // METHOD 1: Check DOM attribute 
-        const domUrl = document.documentElement.getAttribute('data-tmx-api-url');
-        if (domUrl) {
-            try {
-                new URL(domUrl);
-                TMX_STATE.lastApiUrl = domUrl;
-                TMX_STATE.hasCapturedUrl = true;
-                return domUrl;
-            } catch (e) {
-                console.error('[TMX] Invalid DOM URL:', domUrl);
-            }
+    // ------------------------------------------------------------------
+    // Finding the search the page itself ran
+    //
+    // Earlier versions replaced window.fetch to record request URLs. Mozilla
+    // reviewed that as monitoring the user's network activity, which needs an
+    // explicit consent flow, and they were right to: patching fetch observes
+    // every request the page makes, not just the one we care about.
+    //
+    // Resource Timing gives us the same answer without any of that. It is a
+    // standard, read-only browser API listing resources the page has already
+    // loaded. Nothing is hooked, nothing is injected into the page, no request
+    // is observed as it happens, and no data leaves the browser - we simply
+    // look up the search URL this page already used so a download can reuse it
+    // verbatim instead of guessing it from the address bar.
+    // ------------------------------------------------------------------
+    function findApiUrlFromTimings(fragment) {
+        let entries;
+        try {
+            entries = performance.getEntriesByType('resource');
+        } catch (e) {
+            return null;
         }
-        
-        // METHOD 2: Check window property
-        if (window.__tmx_lastApiUrl) {
+        if (!entries || !entries.length) return null;
+
+        // Most recent match wins: the newest search is the current one.
+        for (let i = entries.length - 1; i >= 0; i--) {
+            const name = entries[i] && entries[i].name;
+            if (typeof name === 'string' && name.indexOf(fragment) !== -1) return name;
+        }
+        return null;
+    }
+
+    /**
+     * Calls `onFound` whenever the page loads a new URL containing `fragment`.
+     * PerformanceObserver is the passive counterpart to the lookup above.
+     */
+    function watchApiUrl(fragment, onFound) {
+        if (typeof PerformanceObserver === 'undefined') return;
+        try {
+            const observer = new PerformanceObserver((list) => {
+                for (const entry of list.getEntries()) {
+                    if (entry && typeof entry.name === 'string' && entry.name.indexOf(fragment) !== -1) {
+                        onFound(entry.name);
+                        return;
+                    }
+                }
+            });
+            observer.observe({ type: 'resource', buffered: false });
+        } catch (e) {
+            console.debug('[TMX] Resource timing observer unavailable:', e);
+        }
+    }
+
+    function getApiUrlSafe() {
+        // METHOD 1: the search this page already ran, via Resource Timing.
+        const timedUrl = findApiUrlFromTimings('/api/tracks');
+        if (timedUrl) {
             try {
-                new URL(window.__tmx_lastApiUrl);
-                TMX_STATE.lastApiUrl = window.__tmx_lastApiUrl;
+                new URL(timedUrl);
+                TMX_STATE.lastApiUrl = timedUrl;
                 TMX_STATE.hasCapturedUrl = true;
-                return window.__tmx_lastApiUrl;
+                return timedUrl;
             } catch (e) {
-                console.error('[TMX] Invalid window URL:', window.__tmx_lastApiUrl);
+                console.error('[TMX] Invalid timing URL:', timedUrl);
             }
         }
         
@@ -194,15 +225,12 @@
     }
 
     function loadJSZip() {
-      return new Promise((resolve, reject) => {
-        if (window.JSZip) return resolve();
-
-        const script = document.createElement('script');
-        script.src = chrome.runtime.getURL('jszip.min.js');
-        script.onload = resolve;
-        script.onerror = () => reject(new Error('Failed to load JSZip'));
-        document.head.appendChild(script);
-      });
+      // JSZip is bundled with this extension (jszip.min.js, declared in the
+      // manifest's content_scripts) and is already present in this world.
+      // Nothing is fetched from a remote origin.
+      return window.JSZip
+          ? Promise.resolve()
+          : Promise.reject(new Error('Bundled JSZip library failed to load'));
     }
 
     // ============================================================================
@@ -364,6 +392,112 @@
         return { downloadBtn, status };
     }
 
+    /**
+     * Keeps the redesigned controls and the original checkboxes in step, and
+     * keeps one plain-English sentence at the top of the modal describing what
+     * "Start download" is actually going to do.
+     *
+     * The old UI exposed "Shuffle track order" and "Random selection" as two
+     * independent checkboxes that were not independent at all - shuffle won,
+     * and a footnote had to explain it. They are one three-way choice now.
+     */
+    function wireModalControls(modal) {
+        const $ = (id) => modal.querySelector('#' + id);
+        const radio = (name) => modal.querySelector(`input[name="${name}"]:checked`)?.value;
+
+        const countField = $('tmxCountField');
+        const trackCount = $('trackCount');
+        const startIndex = $('startIndex');
+        const createZip = $('createZip');
+        const shuffleTracks = $('shuffleTracks');
+        const randomSelection = $('randomSelection');
+        const createIdTxt = $('createIdTxt');
+        const idListOnly = $('idListOnly');
+        const idOnlyRow = $('tmxIdOnlyRow');
+        const includeMetadata = $('includeMetadata');
+        const summary = $('tmxSummaryText');
+        const orderHint = $('tmxOrderHint');
+
+        const ORDER_HINTS = {
+            default: 'Tracks arrive in the order your search returned them.',
+            shuffle: 'Takes the same tracks, then mixes up the order they download in.',
+            random: 'Loads every result first, then picks your number at random from the whole set.',
+        };
+
+        function sync() {
+            const amount = radio('tmxAmount');
+            const order = radio('tmxOrder');
+            const format = radio('tmxFormat');
+
+            // "A set number" is the only mode where a count makes sense.
+            const limited = amount === 'limit';
+            trackCount.disabled = !limited;
+            countField.classList.toggle('tmx-dl-field-off', !limited);
+            if (!limited) trackCount.value = '';
+
+            // A random sample has to know how many to pick.
+            const randomNeedsCount = order === 'random' && !limited;
+
+            // Mirror onto the checkboxes handleDownload still reads.
+            shuffleTracks.checked = order === 'shuffle';
+            randomSelection.checked = order === 'random';
+            createZip.checked = format === 'zip';
+
+            // "ID list only" is meaningless without an ID list.
+            const wantsIds = createIdTxt.checked;
+            idListOnly.disabled = !wantsIds;
+            if (!wantsIds) idListOnly.checked = false;
+            idOnlyRow.classList.toggle('tmx-check-off', !wantsIds);
+
+            orderHint.textContent = randomNeedsCount
+                ? 'Pick "A set number" above to say how many to sample.'
+                : ORDER_HINTS[order];
+            orderHint.classList.toggle('tmx-dl-hint-warn', randomNeedsCount);
+
+            summary.textContent = describeRun({
+                amount,
+                order,
+                format,
+                count: parseInt(trackCount.value, 10) || null,
+                skip: parseInt(startIndex.value, 10) || 0,
+                metadata: includeMetadata.checked,
+                idList: wantsIds,
+                idOnly: idListOnly.checked,
+                multi: $('multiExchangeMode').checked,
+                exchanges: modal.querySelectorAll('.exchange-checkbox:checked').length,
+            });
+        }
+
+        function describeRun(o) {
+            if (o.idOnly) {
+                const what = o.amount === 'limit' && o.count ? `${o.count.toLocaleString()} track IDs` : 'every matching track ID';
+                return `No map files — just a .txt listing ${what}.`;
+            }
+
+            const n = o.amount === 'limit' && o.count ? o.count.toLocaleString() + ' tracks' : 'every track your search returns';
+            const picked =
+                o.order === 'random' ? `${n}, sampled at random from the full result set` :
+                o.order === 'shuffle' ? `${n}, in a shuffled order` : n;
+
+            const parts = [`${picked[0].toUpperCase()}${picked.slice(1)}`];
+            parts.push(o.format === 'zip' ? 'as one ZIP file' : 'as separate .gbx files');
+            if (o.skip > 0) parts.push(`skipping the first ${o.skip.toLocaleString()}`);
+            if (o.multi) parts.push(`across ${o.exchanges} exchange${o.exchanges === 1 ? '' : 's'}`);
+
+            const extras = [];
+            if (o.metadata) extras.push('metadata JSON');
+            if (o.idList) extras.push('an ID list');
+
+            let text = parts.join(', ');
+            if (extras.length) text += `, plus ${extras.join(' and ')}`;
+            return text + '.';
+        }
+
+        modal.addEventListener('change', sync);
+        modal.addEventListener('input', sync);
+        sync();
+    }
+
     function createModal() {
         // Remove old modal if exists
         const oldModal = document.getElementById('tmx-modal');
@@ -381,161 +515,125 @@
         modal.id = 'tmx-modal';
         modal.className = 'tmx-modal';
         
+        // The visible controls are radio groups; `handleDownload` still reads
+        // the original checkboxes, so those live on as hidden mirrors that the
+        // radios drive. That keeps the download logic untouched.
         modal.innerHTML = `
-            <div class="tmx-modal-content">
-                <h2><span id="exchange-name">${exchange.name}</span> Track Downloader</h2>
-                
-                <!-- Download Options -->
-                <div class="tmx-option-group">
-                    <label>📥 Download Options</label>
-                    <div class="tmx-checkbox-group">
-                        <label class="tmx-interactive">
-                            <input type="checkbox" id="shuffleTracks">
-                            <span>Shuffle track order</span>
-                        </label>
-                        <small style="color: var(--muted-textcolor); font-size: 11px; display: block; margin-top: 4px;">
-                            Downloads the first N maps — just in a random order.
-                        </small>
+            <div class="tmx-modal-content tmx-dl">
+                <header class="tmx-dl-head">
+                    <div class="tmx-dl-title">
+                        <h2>Download tracks</h2>
+                        <p class="tmx-dl-sub" id="exchange-name">${exchange.name}</p>
+                    </div>
+                    <button type="button" class="tmx-dl-x" id="tmxCloseModal" aria-label="Close">&times;</button>
+                </header>
 
-                        <label class="tmx-interactive">
-                            <input type="checkbox" id="randomSelection">
-                            <span>Random selection</span>
-                        </label>
-                        <small style="color: var(--muted-textcolor); font-size: 11px; display: block; margin-top: 4px;">
-                            Loads all results and picks N maps at random from the full set.
-                        </small>
+                <div class="tmx-dl-body">
+                    <!-- Always says, in one sentence, what pressing the button will do. -->
+                    <div class="tmx-dl-summary">
+                        <span class="tmx-dl-summary-icon" aria-hidden="true">&#8681;</span>
+                        <p id="tmxSummaryText">Every track your search returns, as one ZIP file.</p>
                     </div>
-                    <small style="color: var(--muted-textcolor); font-size: 10px; display: block; margin-top: 8px; font-style: italic;">
-                        Note: Only one option applies at a time (shuffle takes priority).
-                    </small>
-                </div>
-                <div class="tmx-option-group">
-                    <label>🌐 Multi-Exchange Search</label>
-                    <div class="tmx-checkbox-group">
-                        <label class="tmx-interactive">
-                            <input type="checkbox" id="multiExchangeMode">
-                            <span>Enable Multi-Exchange Mode</span>
-                        </label>
-                        <small style="color: var(--muted-textcolor); font-size: 11px; display: block; margin-top: 4px;">
-                            Search across multiple TMX platforms simultaneously
-                        </small>
-                    </div>
-                    
-                    <div id="exchangeSelector" style="margin-top: 12px; display: none;">
-                        <label style="font-size: 11px; margin-bottom: 8px; display: block;">Select Exchanges:</label>
-                        <div class="tmx-checkbox-group">
-                            <label class="tmx-interactive">
-                                <input type="checkbox" class="exchange-checkbox" value="tmnf.exchange" checked>
-                                <span>TMNF-X (TrackMania Nations Forever)</span>
+
+                    <section class="tmx-dl-section">
+                        <h3>How many</h3>
+                        <div class="tmx-seg" role="radiogroup" aria-label="How many tracks">
+                            <label><input type="radio" name="tmxAmount" value="all" checked><span>All results</span></label>
+                            <label><input type="radio" name="tmxAmount" value="limit"><span>A set number</span></label>
+                        </div>
+                        <div class="tmx-dl-fields">
+                            <label class="tmx-dl-field tmx-dl-field-off" id="tmxCountField">
+                                <span>How many tracks</span>
+                                <input type="number" id="trackCount" min="1" placeholder="50" disabled>
                             </label>
-                            <label class="tmx-interactive">
-                                <input type="checkbox" class="exchange-checkbox" value="tmuf.exchange" checked>
-                                <span>TMUF-X (TrackMania United Forever)</span>
-                            </label>
-                            <label class="tmx-interactive">
-                                <input type="checkbox" class="exchange-checkbox" value="original.tm-exchange.com" checked>
-                                <span>TMO-X (TrackMania Original)</span>
-                            </label>
-                            <label class="tmx-interactive">
-                                <input type="checkbox" class="exchange-checkbox" value="sunrise.tm-exchange.com" checked>
-                                <span>TMS-X (TrackMania Sunrise)</span>
-                            </label>
-                            <label class="tmx-interactive">
-                                <input type="checkbox" class="exchange-checkbox" value="nations.tm-exchange.com" checked>
-                                <span>TMN-X (TrackMania Nations)</span>
+                            <label class="tmx-dl-field">
+                                <span>Skip the first</span>
+                                <input type="number" id="startIndex" min="0" value="0">
                             </label>
                         </div>
-                    </div>
-                </div>
-                
-                <!-- Track Count -->
-                <div class="tmx-option-group">
-                    <label>🔢 Number of Tracks</label>
-                    <input 
-                        type="number" 
-                        id="trackCount" 
-                        placeholder="Leave empty to download all tracks" 
-                        min="1"
-                    >
-                </div>
-                
-                <!-- Start Position -->
-                <div class="tmx-option-group">
-                    <label>📍 Start Position</label>
-                    <input 
-                        type="number" 
-                        id="startIndex" 
-                        placeholder="0" 
-                        min="0" 
-                        value="0"
-                    >
-                    <small style="color: var(--muted-textcolor); font-size: 11px; display: block; margin-top: 4px;">
-                        Skip the first N tracks (0 = start from beginning)
-                    </small>
-                </div>
-                
-                <!-- ZIP Options -->
-                <div class="tmx-option-group">
-                    <label>📦 Archive & Export</label>
-                    <div class="tmx-checkbox-group">
-                        <label class="tmx-interactive">
-                            <input type="checkbox" id="createZip" checked>
-                            <span>Create ZIP archive</span>
-                        </label>
-                        <label class="tmx-interactive">
-                            <input type="checkbox" id="includeMetadata">
-                            <span>Include metadata (JSON)</span>
-                        </label>
-                        <div style="margin-top: 8px; border-top: 1px solid var(--muted-border-color); padding-top: 8px;">
-                            <label class="tmx-interactive">
+                    </section>
+
+                    <section class="tmx-dl-section">
+                        <h3>Order</h3>
+                        <div class="tmx-seg tmx-seg-3" role="radiogroup" aria-label="Track order">
+                            <label><input type="radio" name="tmxOrder" value="default" checked><span>Search order</span></label>
+                            <label><input type="radio" name="tmxOrder" value="shuffle"><span>Shuffled</span></label>
+                            <label><input type="radio" name="tmxOrder" value="random"><span>Random sample</span></label>
+                        </div>
+                        <p class="tmx-dl-hint" id="tmxOrderHint">Tracks arrive in the order your search returned them.</p>
+                    </section>
+
+                    <section class="tmx-dl-section">
+                        <h3>Output</h3>
+                        <div class="tmx-seg" role="radiogroup" aria-label="Output format">
+                            <label><input type="radio" name="tmxFormat" value="zip" checked><span>One ZIP file</span></label>
+                            <label><input type="radio" name="tmxFormat" value="files"><span>Separate files</span></label>
+                        </div>
+                        <div class="tmx-dl-checks">
+                            <label class="tmx-check">
+                                <input type="checkbox" id="includeMetadata">
+                                <span><strong>Include metadata</strong><small>A JSON file describing every track.</small></span>
+                            </label>
+                            <label class="tmx-check">
                                 <input type="checkbox" id="createIdTxt">
-                                <span>Create ID List (.txt)</span>
+                                <span><strong>Include an ID list</strong><small>A plain .txt listing every track ID.</small></span>
                             </label>
-                            <label class="tmx-interactive" style="margin-left: 20px;">
-                                <input type="checkbox" id="idListOnly">
-                                <span style="color: #ffaa00;">Skip Map Download (Only IDs)</span>
+                            <label class="tmx-check tmx-check-sub tmx-check-off" id="tmxIdOnlyRow">
+                                <input type="checkbox" id="idListOnly" disabled>
+                                <span><strong>ID list only</strong><small>Skip the .gbx files entirely and just save the list.</small></span>
                             </label>
                         </div>
+                    </section>
+
+                    <details class="tmx-dl-adv" id="tmxAdvanced">
+                        <summary>Search more than one exchange</summary>
+                        <div class="tmx-dl-adv-body">
+                            <label class="tmx-check">
+                                <input type="checkbox" id="multiExchangeMode">
+                                <span><strong>Multi-exchange mode</strong><small>Run the same search on several TMX sites and merge the results.</small></span>
+                            </label>
+                            <div id="exchangeSelector" class="tmx-dl-exchanges">
+                                <label class="tmx-check tmx-check-tight"><input type="checkbox" class="exchange-checkbox" value="tmnf.exchange" checked><span><strong>TMNF-X</strong><small>Nations Forever</small></span></label>
+                                <label class="tmx-check tmx-check-tight"><input type="checkbox" class="exchange-checkbox" value="tmuf.exchange" checked><span><strong>TMUF-X</strong><small>United Forever</small></span></label>
+                                <label class="tmx-check tmx-check-tight"><input type="checkbox" class="exchange-checkbox" value="original.tm-exchange.com" checked><span><strong>TMO-X</strong><small>Original</small></span></label>
+                                <label class="tmx-check tmx-check-tight"><input type="checkbox" class="exchange-checkbox" value="sunrise.tm-exchange.com" checked><span><strong>TMS-X</strong><small>Sunrise</small></span></label>
+                                <label class="tmx-check tmx-check-tight"><input type="checkbox" class="exchange-checkbox" value="nations.tm-exchange.com" checked><span><strong>TMN-X</strong><small>Nations</small></span></label>
+                            </div>
+                        </div>
+                    </details>
+
+                    <section class="tmx-dl-section tmx-dl-progress-wrap" id="tmxProgressWrap" hidden>
+                        <h3>Progress</h3>
+                        <div class="tmx-progress" id="progressContainer">
+                            <div id="progressBar" class="tmx-progress-bar">0%</div>
+                            <div class="tmx-progress-tire" id="progressTire">&#127937;</div>
+                            <div class="tmx-skid-container" id="skidContainer"></div>
+                        </div>
+                        <p class="tmx-dl-hint" id="progressText">Ready to download</p>
+                    </section>
+
+                    <!-- Mirrors of the old checkboxes, driven by the controls above. -->
+                    <input type="checkbox" id="createZip" class="tmx-dl-mirror" checked tabindex="-1" aria-hidden="true">
+                    <input type="checkbox" id="shuffleTracks" class="tmx-dl-mirror" tabindex="-1" aria-hidden="true">
+                    <input type="checkbox" id="randomSelection" class="tmx-dl-mirror" tabindex="-1" aria-hidden="true">
+                </div>
+
+                <footer class="tmx-dl-foot">
+                    <button type="button" id="viewStatistics" class="tmx-btn tmx-btn-ghost">&#128202; Statistics</button>
+                    <div class="tmx-dl-foot-actions">
+                        <button type="button" id="cancelDownload" class="tmx-btn tmx-btn-secondary">Close</button>
+                        <button type="button" id="startDownload" class="tmx-btn">Start download</button>
                     </div>
-                </div>
-                
-                <!-- Progress -->
-                <div class="tmx-option-group">
-                    <label>📊 Progress</label>
-                    <div class="tmx-progress" id="progressContainer">
-                        <div id="progressBar" class="tmx-progress-bar">0%</div>
-                        <!-- Tire icon (emoji) -->
-                        <div class="tmx-progress-tire" id="progressTire">🏁</div>
-                        <!-- Skid marks container -->
-                        <div class="tmx-skid-container" id="skidContainer"></div>
-                    </div>
-                    <div id="progressText">Ready to download</div>
-                </div>
-                
-                <!-- Action Buttons -->
-                <div class="tmx-btn-row">
-                    <button id="startDownload" class="tmx-btn">
-                        Start Download
-                    </button>
-                    <button id="cancelDownload" class="tmx-btn tmx-btn-secondary">
-                        Cancel
-                    </button>
-                </div>
-                <!-- Statistics Button -->
-                <div class="tmx-option-group">
-                    <button id="viewStatistics" class="tmx-btn tmx-btn-stats">
-                        📊 View Track Statistics
-                    </button>
-                    <small style="color: var(--muted-textcolor); font-size: 11px; display: block; margin-top: 4px;">
-                        Analyze all tracks from current search results
-                    </small>
-                </div>
+                </footer>
             </div>
         `;
-        
+
         document.body.appendChild(modal);
+
+        wireModalControls(modal);
         
         // Event listeners
+        modal.querySelector('#tmxCloseModal').addEventListener('click', handleCancel);
         document.getElementById('startDownload').addEventListener('click', handleDownload);
         document.getElementById('cancelDownload').addEventListener('click', handleCancel);
         document.getElementById('viewStatistics').addEventListener('click', async () => {
@@ -643,7 +741,7 @@ async function createStatisticsModal() {
                     <button class="tmx-stats-tab" data-tab="awards">Awards Analysis</button>
                     <button class="tmx-stats-tab" data-tab="difficulty">Difficulty</button>
                     <button class="tmx-stats-tab" data-tab="timeline">Timeline</button>
-                    <button class="tmx-stats-tab" data-tab="environments">Environments</button>
+                    <button class="tmx-stats-tab" data-tab="environments">Tags</button>
                 </div>
                 
                 <!-- Tab Content -->
@@ -655,7 +753,7 @@ async function createStatisticsModal() {
                             <canvas id="awardDistChart"></canvas>
                         </div>
                         <div class="tmx-chart-container">
-                            <h3>📊 Track Length Distribution</h3>
+                            <h3>📊 Track length (TMX length buckets)</h3>
                             <canvas id="lengthDistChart"></canvas>
                         </div>
                     </div>
@@ -672,7 +770,7 @@ async function createStatisticsModal() {
                     <!-- Awards Analysis Tab -->
                     <div class="tmx-stats-panel" data-panel="awards">
                         <div class="tmx-chart-container">
-                            <h3>⭐ Awards vs Track Count</h3>
+                            <h3>⭐ Uploads and average awards by year</h3>
                             <canvas id="awardsScatterChart"></canvas>
                         </div>
                         <div class="tmx-chart-container">
@@ -728,7 +826,7 @@ async function createStatisticsModal() {
                     <!-- Environments Tab -->
                     <div class="tmx-stats-panel" data-panel="environments">
                         <div class="tmx-chart-container">
-                            <h3>🌍 Environment/Style Distribution</h3>
+                            <h3>🏷️ Tag frequency</h3>
                             <canvas id="environmentChart"></canvas>
                         </div>
                     </div>
@@ -878,10 +976,15 @@ async function fetchAndAnalyzeAllTracks() {
             oldestTrack: null,
             newestTrack: null,
             
-            // Environment analysis
-            environments: {}
+            // Tag analysis
+            tagCounts: {},
+            taggedTracks: 0
         };
         
+    // Upper edge in seconds of each TMX length bucket, used only to place a
+    // track that arrives without a `Length` value.
+    const TMX_BUCKET_EDGES = [20, 37, 51, 66, 81, 96, 111, 130, 155, 186, 216, 255, 330];
+
         // Process each track
         tracks.forEach(track => {
             // Author stats
@@ -919,10 +1022,21 @@ async function fetchAndAnalyzeAllTracks() {
                 stats.difficultyCount['Unknown']++;
             }
             
-            // Length stats
-            const lengthSeconds = Math.round((track.AuthorTime || 0) / 1000);
-            const lengthBucket = Math.floor(lengthSeconds / 30) * 30;
-            stats.lengthBuckets[lengthBucket] = (stats.lengthBuckets[lengthBucket] || 0) + 1;
+            // Length stats. TMX's own bucket (`Length`, 0-13) is the only
+            // trustworthy signal - the catalogue's AuthorTime holds negatives,
+            // INT_MIN, INT_MAX and multi-day values. Fall back to the author
+            // time only when the bucket is missing, and only if it is sane.
+            let bucket = track.Length;
+            if (!Number.isInteger(bucket) || bucket < 0 || bucket > 13) {
+                const secs = Math.round((track.AuthorTime || 0) / 1000);
+                bucket = (secs > 0 && secs < 36000)
+                    ? TMX_BUCKET_EDGES.findIndex((edge) => secs <= edge)
+                    : -1;
+                if (bucket === -1) bucket = (secs > 0 && secs < 36000) ? 13 : null;
+            }
+            if (bucket !== null) {
+                stats.lengthBuckets[bucket] = (stats.lengthBuckets[bucket] || 0) + 1;
+            }
             
             // Timeline stats
             if (track.UploadedAt) {
@@ -937,16 +1051,34 @@ async function fetchAndAnalyzeAllTracks() {
                 }
             }
             
-            // Environment stats
-            const styleType = track.PrimaryType;
-            const styleKey = (styleType !== null && styleType !== undefined) ? styleType : 'Unknown';
-            stats.environments[styleKey] = (stats.environments[styleKey] || 0) + 1;
+            // Tag stats. `Tags` is an array and a map can carry several, so a
+            // track contributes to every tag it holds. `Style` is the legacy
+            // single-tag field kept for older uploads. `PrimaryType` is the
+            // track TYPE (Race/Platform/Puzzle) and is deliberately not used.
+            let trackTags = [];
+            if (Array.isArray(track.Tags) && track.Tags.length > 0) {
+                trackTags = [...new Set(track.Tags)];
+            } else if (track.Style !== null && track.Style !== undefined && track.Style !== -1) {
+                trackTags = [track.Style];
+            }
+            if (trackTags.length > 0) {
+                stats.taggedTracks++;
+                for (const tag of trackTags) {
+                    stats.tagCounts[tag] = (stats.tagCounts[tag] || 0) + 1;
+                }
+            }
         });
         
         // Calculate derived stats
         stats.totalAuthors = Object.keys(stats.authors).length;
         stats.avgAward = tracks.length > 0 ? (stats.totalAwards / tracks.length).toFixed(2) : 0;
-        stats.avgLength = tracks.reduce((sum, t) => sum + (t.AuthorTime || 0), 0) / tracks.length / 1000;
+        // A mean over AuthorTime is meaningless when a single INT_MAX row can
+        // dominate it; take the median of the plausible values instead.
+        const sane = tracks
+            .map((t2) => (t2.AuthorTime || 0) / 1000)
+            .filter((s) => s > 0 && s < 36000)
+            .sort((a, b) => a - b);
+        stats.avgLength = sane.length ? sane[Math.floor(sane.length / 2)] : 0;
         
         // Top authors
         stats.topAuthors = Object.values(stats.authors)
@@ -972,15 +1104,14 @@ async function fetchAndAnalyzeAllTracks() {
 // ============================================================================
 
 function renderStatisticsCharts(stats) {
-    // Load Chart.js if not already loaded
+    // Chart.js is bundled with this extension (chart.min.js, declared in the
+    // manifest's content_scripts). No script is ever fetched from a remote origin.
     if (!window.Chart) {
-        const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
-        script.onload = () => renderAllCharts(stats);
-        document.head.appendChild(script);
-    } else {
-        renderAllCharts(stats);
+        console.error('[TMX] Bundled Chart.js (chart.min.js) is not available.');
+        alert('❌ Charts are unavailable: the bundled Chart.js library did not load.');
+        return;
     }
+    renderAllCharts(stats);
 }
 
 function renderAllCharts(stats) {
@@ -1031,253 +1162,563 @@ function renderAllCharts(stats) {
     }
 }
 
+// ============================================================================
+// CHART THEME
+//
+// One palette and one set of defaults for every chart, so the statistics view
+// reads as a single thing rather than eight unrelated pictures. Chart.js is
+// bundled at v3.9.1; nothing here needs a date adapter, which is why the
+// time-based charts use categorical axes.
+// ============================================================================
+
+/** Ordered categorical palette - distinct in hue and in lightness. */
+const TMX_PALETTE = [
+    '#3b82f6', '#f97316', '#10b981', '#a855f7',
+    '#ef4444', '#eab308', '#06b6d4', '#ec4899',
+    '#84cc16', '#6366f1',
+];
+
+/** Sequential ramp for "more is more" bar charts. */
+const TMX_RAMP = ['#bfdbfe', '#93c5fd', '#60a5fa', '#3b82f6', '#2563eb', '#1d4ed8'];
+
+function tmxChartTheme() {
+    // TMX ships a light and a dark skin. Read the actual rendered background
+    // rather than guessing, so the charts follow whichever the user is on.
+    let dark = false;
+    try {
+        const bg = getComputedStyle(document.body).backgroundColor || '';
+        const m = bg.match(/(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+        if (m) {
+            const [r, g, b] = [+m[1], +m[2], +m[3]];
+            dark = (0.299 * r + 0.587 * g + 0.114 * b) < 128;
+        }
+    } catch (e) { /* keep the light defaults */ }
+
+    return {
+        dark,
+        text: dark ? 'rgba(235, 237, 243, 0.85)' : 'rgba(30, 33, 40, 0.85)',
+        muted: dark ? 'rgba(235, 237, 243, 0.55)' : 'rgba(30, 33, 40, 0.55)',
+        grid: dark ? 'rgba(235, 237, 243, 0.10)' : 'rgba(30, 33, 40, 0.10)',
+        surface: dark ? '#20242c' : '#ffffff',
+    };
+}
+
+/** Shared options - axis styling, tooltips and the bits every chart repeats. */
+function tmxChartOptions(extra) {
+    const t = tmxChartTheme();
+    const base = {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 350 },
+        layout: { padding: { top: 4, right: 6, bottom: 0, left: 0 } },
+        plugins: {
+            legend: { display: false },
+            tooltip: {
+                backgroundColor: t.dark ? 'rgba(12, 14, 18, 0.95)' : 'rgba(20, 22, 28, 0.95)',
+                titleColor: '#fff',
+                bodyColor: 'rgba(255, 255, 255, 0.85)',
+                borderColor: 'rgba(255, 255, 255, 0.15)',
+                borderWidth: 1,
+                padding: 10,
+                cornerRadius: 6,
+                displayColors: false,
+                titleFont: { size: 12, weight: '600' },
+                bodyFont: { size: 12 },
+            },
+        },
+        scales: {
+            x: {
+                grid: { display: false, drawBorder: false },
+                ticks: { color: t.muted, font: { size: 11 }, maxRotation: 0, autoSkipPadding: 12 },
+            },
+            y: {
+                beginAtZero: true,
+                grid: { color: t.grid, drawBorder: false, drawTicks: false },
+                ticks: { color: t.muted, font: { size: 11 }, padding: 8, precision: 0 },
+            },
+        },
+    };
+    return tmxMergeDeep(base, extra || {});
+}
+
+function tmxMergeDeep(target, source) {
+    const out = Array.isArray(target) ? target.slice() : Object.assign({}, target);
+    for (const key of Object.keys(source)) {
+        const a = out[key];
+        const b = source[key];
+        out[key] = (b && typeof b === 'object' && !Array.isArray(b) && a && typeof a === 'object' && !Array.isArray(a))
+            ? tmxMergeDeep(a, b)
+            : b;
+    }
+    return out;
+}
+
+/** Re-opening the stats view must not trip "Canvas is already in use". */
+function tmxCanvas(id) {
+    const ctx = document.getElementById(id);
+    if (!ctx) return null;
+    const existing = (typeof Chart.getChart === 'function') ? Chart.getChart(ctx) : null;
+    if (existing) existing.destroy();
+    return ctx;
+}
+
+const tmxNum = (n) => Number(n || 0).toLocaleString();
+
+// ============================================================================
+// CHARTS
+// ============================================================================
+
+/**
+ * Raw award counts have a very long tail - a handful of tracks with hundreds of
+ * awards and thousands with none - so plotting one bar per integer buries the
+ * shape. These bands show the distribution people actually care about.
+ */
+const AWARD_BANDS = [
+    { label: 'None', test: (a) => a === 0 },
+    { label: '1', test: (a) => a === 1 },
+    { label: '2', test: (a) => a === 2 },
+    { label: '3-5', test: (a) => a >= 3 && a <= 5 },
+    { label: '6-10', test: (a) => a >= 6 && a <= 10 },
+    { label: '11-25', test: (a) => a >= 11 && a <= 25 },
+    { label: '26-50', test: (a) => a >= 26 && a <= 50 },
+    { label: '51-100', test: (a) => a >= 51 && a <= 100 },
+    { label: '100+', test: (a) => a > 100 },
+];
+
 function renderAwardDistribution(stats) {
-    const ctx = document.getElementById('awardDistChart');
-    const sortedAwards = Object.entries(stats.awardDistribution)
-        .sort((a, b) => parseInt(a[0]) - parseInt(b[0]))
-        .slice(0, 20); // Top 20 award values
-    
+    const ctx = tmxCanvas('awardDistChart');
+    if (!ctx) return;
+
+    const counts = AWARD_BANDS.map(() => 0);
+    for (const [award, n] of Object.entries(stats.awardDistribution)) {
+        const value = parseInt(award, 10);
+        const idx = AWARD_BANDS.findIndex((b) => b.test(value));
+        if (idx >= 0) counts[idx] += n;
+    }
+
+    const total = counts.reduce((a, b) => a + b, 0) || 1;
+
     new Chart(ctx, {
         type: 'bar',
         data: {
-            labels: sortedAwards.map(([award]) => `${award} ⭐`),
+            labels: AWARD_BANDS.map((b) => b.label),
             datasets: [{
-                label: 'Number of Tracks',
-                data: sortedAwards.map(([, count]) => count),
-                backgroundColor: 'rgba(75, 192, 192, 0.6)',
-                borderColor: 'rgba(75, 192, 192, 1)',
-                borderWidth: 1
-            }]
+                data: counts,
+                backgroundColor: counts.map((_, i) => TMX_RAMP[Math.min(i, TMX_RAMP.length - 1)]),
+                borderRadius: 4,
+                borderSkipped: false,
+            }],
         },
-        options: {
-            responsive: true,
+        options: tmxChartOptions({
             plugins: {
-                legend: { display: false },
-                title: { display: false }
+                tooltip: {
+                    callbacks: {
+                        title: (items) => items[0].label + ' awards',
+                        label: (item) => `${tmxNum(item.parsed.y)} tracks (${(item.parsed.y / total * 100).toFixed(1)}%)`,
+                    },
+                },
             },
-            scales: {
-                y: { beginAtZero: true }
-            }
-        }
+            scales: { x: { title: { display: true, text: 'Awards received', color: tmxChartTheme().muted, font: { size: 11 } } } },
+        }),
     });
 }
 
+/**
+ * TMX publishes its own length bucket on every track (`Length`, 0-13) and it is
+ * the only length signal worth trusting - the raw author time in the catalogue
+ * contains negatives, INT_MIN, INT_MAX and multi-day values, which is what made
+ * the old "seconds" histogram unreadable.
+ */
+const TMX_LENGTH_LABELS = [
+    'to 20s', '20-37s', '37-51s', '51-66s', '1:06-1:21', '1:21-1:36', '1:36-1:51',
+    '1:51-2:10', '2:10-2:35', '2:35-3:06', '3:06-3:36', '3:36-4:15', '4:15-5:30', '5:30+',
+];
+
 function renderLengthDistribution(stats) {
-    const ctx = document.getElementById('lengthDistChart');
-    const sortedLengths = Object.entries(stats.lengthBuckets)
-        .sort((a, b) => parseInt(a[0]) - parseInt(b[0]))
-        .slice(0, 20);
-    
+    const ctx = tmxCanvas('lengthDistChart');
+    if (!ctx) return;
+
+    const counts = TMX_LENGTH_LABELS.map((_, i) => stats.lengthBuckets[i] || 0);
+    const total = counts.reduce((a, b) => a + b, 0) || 1;
+    const peak = Math.max(...counts);
+
     new Chart(ctx, {
-        type: 'line',
+        type: 'bar',
         data: {
-            labels: sortedLengths.map(([sec]) => `${sec}s`),
+            labels: TMX_LENGTH_LABELS,
             datasets: [{
-                label: 'Track Count',
-                data: sortedLengths.map(([, count]) => count),
-                fill: true,
-                backgroundColor: 'rgba(255, 159, 64, 0.2)',
-                borderColor: 'rgba(255, 159, 64, 1)',
-                tension: 0.4
-            }]
+                data: counts,
+                // Highlight the modal bucket; everything else recedes.
+                backgroundColor: counts.map((c) => (c === peak && peak > 0 ? '#3b82f6' : 'rgba(59, 130, 246, 0.45)')),
+                borderRadius: 4,
+                borderSkipped: false,
+            }],
         },
-        options: {
-            responsive: true,
+        options: tmxChartOptions({
             plugins: {
-                legend: { display: false }
-            }
-        }
+                tooltip: {
+                    callbacks: {
+                        title: (items) => 'Length ' + items[0].label,
+                        label: (item) => `${tmxNum(item.parsed.y)} tracks (${(item.parsed.y / total * 100).toFixed(1)}%)`,
+                    },
+                },
+            },
+            scales: { x: { ticks: { maxRotation: 45, minRotation: 45, font: { size: 10 } } } },
+        }),
     });
 }
 
 function renderTopAuthors(stats) {
-    const ctx = document.getElementById('authorsChart');
-    
-    new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: stats.topAuthors.map(a => a.name),
-            datasets: [{
-                label: 'Tracks',
-                data: stats.topAuthors.map(a => a.trackCount),
-                backgroundColor: 'rgba(153, 102, 255, 0.6)',
-                borderColor: 'rgba(153, 102, 255, 1)',
-                borderWidth: 1
-            }]
-        },
-        options: {
-            indexAxis: 'y',
-            responsive: true,
-            plugins: {
-                legend: { display: false }
-            }
-        }
-    });
-    
-    // Render detailed author list
+    const ctx = tmxCanvas('authorsChart');
+    if (ctx) {
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: stats.topAuthors.map((a) => a.name),
+                datasets: [{
+                    data: stats.topAuthors.map((a) => a.trackCount),
+                    backgroundColor: '#a855f7',
+                    borderRadius: 4,
+                    borderSkipped: false,
+                }],
+            },
+            options: tmxChartOptions({
+                indexAxis: 'y',
+                scales: {
+                    x: { beginAtZero: true, grid: { color: tmxChartTheme().grid, drawBorder: false }, ticks: { color: tmxChartTheme().muted, font: { size: 11 }, precision: 0 } },
+                    y: { grid: { display: false, drawBorder: false }, ticks: { color: tmxChartTheme().text, font: { size: 11 } } },
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: (item) => {
+                                const a = stats.topAuthors[item.dataIndex];
+                                return `${tmxNum(a.trackCount)} tracks · ${tmxNum(a.totalAwards)} awards`;
+                            },
+                        },
+                    },
+                },
+            }),
+        });
+    }
+
     const authorsList = document.getElementById('authorsList');
+    if (!authorsList) return;
+    const max = Math.max(1, ...stats.topAuthors.map((a) => a.trackCount));
     authorsList.innerHTML = stats.topAuthors.map((author, idx) => `
         <div class="tmx-author-item">
-            <span class="tmx-author-rank">#${idx + 1}</span>
-            <span class="tmx-author-name">${author.name}</span>
-            <span class="tmx-author-tracks">${author.trackCount} tracks</span>
-            <span class="tmx-author-awards">⭐ ${author.totalAwards}</span>
+            <span class="tmx-author-rank">${idx + 1}</span>
+            <span class="tmx-author-name" title="${tmxEscape(author.name)}">${tmxEscape(author.name)}</span>
+            <span class="tmx-author-bar"><i style="width:${(author.trackCount / max * 100).toFixed(1)}%"></i></span>
+            <span class="tmx-author-tracks">${tmxNum(author.trackCount)}</span>
+            <span class="tmx-author-awards">${tmxNum(author.totalAwards)} &#9733;</span>
         </div>
     `).join('');
 }
 
+function tmxEscape(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+/**
+ * The old chart here plotted awards against the track's index in the result
+ * array, which carries no meaning at all. Awards per upload year does: it shows
+ * whether the community is still awarding recent maps or mostly older ones.
+ */
 function renderAwardsScatter(stats) {
-    const ctx = document.getElementById('awardsScatterChart');
-    const data = stats.tracks.map((track, idx) => ({
-        x: idx,
-        y: track.Awards || 0
-    }));
-    
+    const ctx = tmxCanvas('awardsScatterChart');
+    if (!ctx) return;
+
+    const byYear = new Map();
+    for (const track of stats.tracks) {
+        if (!track.UploadedAt) continue;
+        const year = new Date(track.UploadedAt).getFullYear();
+        if (!Number.isFinite(year) || year < 2004 || year > 2100) continue;
+        if (!byYear.has(year)) byYear.set(year, { total: 0, awards: 0 });
+        const b = byYear.get(year);
+        b.total += 1;
+        b.awards += track.Awards || 0;
+    }
+
+    const years = [...byYear.keys()].sort((a, b) => a - b);
+    const avg = years.map((y) => {
+        const b = byYear.get(y);
+        return b.total ? +(b.awards / b.total).toFixed(2) : 0;
+    });
+    const volume = years.map((y) => byYear.get(y).total);
+    const t = tmxChartTheme();
+
     new Chart(ctx, {
-        type: 'scatter',
+        type: 'bar',
         data: {
-            datasets: [{
-                label: 'Awards per Track',
-                data: data,
-                backgroundColor: 'rgba(255, 99, 132, 0.5)'
-            }]
+            labels: years,
+            datasets: [
+                {
+                    type: 'bar',
+                    label: 'Tracks uploaded',
+                    data: volume,
+                    backgroundColor: 'rgba(59, 130, 246, 0.28)',
+                    borderRadius: 3,
+                    borderSkipped: false,
+                    yAxisID: 'y',
+                    order: 2,
+                },
+                {
+                    type: 'line',
+                    label: 'Average awards',
+                    data: avg,
+                    borderColor: '#f97316',
+                    backgroundColor: '#f97316',
+                    borderWidth: 2,
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    tension: 0.3,
+                    yAxisID: 'y1',
+                    order: 1,
+                },
+            ],
         },
-        options: {
-            responsive: true,
+        options: tmxChartOptions({
+            interaction: { mode: 'index', intersect: false },
             plugins: {
-                legend: { display: false }
-            }
-        }
+                legend: {
+                    display: true,
+                    position: 'top',
+                    align: 'end',
+                    labels: { color: t.muted, boxWidth: 10, boxHeight: 10, usePointStyle: true, font: { size: 11 } },
+                },
+                tooltip: { displayColors: true },
+            },
+            scales: {
+                y: {
+                    position: 'left',
+                    title: { display: true, text: 'Tracks uploaded', color: t.muted, font: { size: 11 } },
+                },
+                y1: {
+                    position: 'right',
+                    beginAtZero: true,
+                    grid: { drawOnChartArea: false, drawBorder: false },
+                    ticks: { color: t.muted, font: { size: 11 } },
+                    title: { display: true, text: 'Avg awards', color: t.muted, font: { size: 11 } },
+                },
+            },
+        }),
     });
 }
 
+const TMX_DIFFICULTY_COLORS = {
+    Beginner: '#10b981',
+    Intermediate: '#eab308',
+    Expert: '#f97316',
+    Lunatic: '#ef4444',
+    Unknown: '#8b8d98',
+};
+
 function renderMostAwardedList(stats) {
     const container = document.getElementById('mostAwardedList');
-    container.innerHTML = stats.topRatedTracks.map((track, idx) => `
-        <div class="tmx-awarded-track">
+    if (!container) return;
+
+    const tracks = stats.topRatedTracks || [];
+    if (!tracks.length) {
+        container.innerHTML = '<p class="tmx-dl-hint">No awarded tracks in these results.</p>';
+        return;
+    }
+
+    // Escape names - they come straight from user-supplied track titles.
+    const max = Math.max(1, ...tracks.map((t) => t.Awards || 0));
+    container.innerHTML = tracks.map((track, idx) => `
+        <a class="tmx-awarded-track" href="/trackshow/${encodeURIComponent(track.TrackId)}" title="${tmxEscape(track.TrackName)}">
             <span class="tmx-track-rank">${idx + 1}</span>
-            <div class="tmx-track-info">
-                <div class="tmx-track-name">${track.TrackName}</div>
-                <div class="tmx-track-author">by ${track.Uploader?.Name || 'Unknown'}</div>
-            </div>
-            <span class="tmx-track-awards">⭐ ${track.Awards || 0}</span>
-        </div>
+            <span class="tmx-track-info">
+                <span class="tmx-track-name">${tmxEscape(track.TrackName)}</span>
+                <span class="tmx-track-author">by ${tmxEscape(track.Uploader && track.Uploader.Name ? track.Uploader.Name : 'Unknown')}</span>
+            </span>
+            <span class="tmx-track-bar"><i style="width:${((track.Awards || 0) / max * 100).toFixed(1)}%"></i></span>
+            <span class="tmx-track-awards">${tmxNum(track.Awards || 0)} &#9733;</span>
+        </a>
     `).join('');
 }
 
 function renderDifficultyChart(stats) {
-    const ctx = document.getElementById('difficultyChart');
-    const difficulties = ['Beginner', 'Intermediate', 'Expert', 'Lunatic'];
-    const colors = [
-        'rgba(75, 192, 192, 0.6)',
-        'rgba(255, 206, 86, 0.6)',
-        'rgba(255, 159, 64, 0.6)',
-        'rgba(255, 99, 132, 0.6)'
-    ];
-    
+    const ctx = tmxCanvas('difficultyChart');
+    if (!ctx) return;
+
+    const order = ['Beginner', 'Intermediate', 'Expert', 'Lunatic', 'Unknown'];
+    const labels = order.filter((d) => (stats.difficultyCount[d] || 0) > 0);
+    const data = labels.map((d) => stats.difficultyCount[d]);
+    const total = data.reduce((a, b) => a + b, 0) || 1;
+    const t = tmxChartTheme();
+
     new Chart(ctx, {
         type: 'doughnut',
         data: {
-            labels: difficulties,
+            labels,
             datasets: [{
-                data: difficulties.map(d => stats.difficultyCount[d]),
-                backgroundColor: colors
-            }]
+                data,
+                backgroundColor: labels.map((d) => TMX_DIFFICULTY_COLORS[d] || '#8b8d98'),
+                borderColor: t.surface,
+                borderWidth: 2,
+                hoverOffset: 6,
+            }],
         },
-        options: {
-            responsive: true,
+        options: tmxChartOptions({
+            cutout: '58%',
+            scales: {},
             plugins: {
-                legend: { position: 'bottom' }
-            }
-        }
+                legend: {
+                    display: true,
+                    position: 'bottom',
+                    labels: { color: t.text, boxWidth: 10, boxHeight: 10, usePointStyle: true, padding: 14, font: { size: 11 } },
+                },
+                tooltip: {
+                    displayColors: true,
+                    callbacks: {
+                        label: (item) => `${tmxNum(item.parsed)} tracks (${(item.parsed / total * 100).toFixed(1)}%)`,
+                    },
+                },
+            },
+        }),
     });
 }
 
 function renderTimelineChart(stats) {
-    const ctx = document.getElementById('timelineChart');
-    
-    // Group by month
+    const ctx = tmxCanvas('timelineChart');
+    if (!ctx) return;
+
     const monthCounts = {};
-    stats.uploadDates.forEach(date => {
-        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-        monthCounts[monthKey] = (monthCounts[monthKey] || 0) + 1;
+    stats.uploadDates.forEach((date) => {
+        if (!(date instanceof Date) || isNaN(date)) return;
+        const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        monthCounts[key] = (monthCounts[key] || 0) + 1;
     });
-    
-    const sortedMonths = Object.entries(monthCounts).sort();
-    
+
+    const months = Object.entries(monthCounts).sort(([a], [b]) => a.localeCompare(b));
+    const t = tmxChartTheme();
+
     new Chart(ctx, {
         type: 'line',
         data: {
-            labels: sortedMonths.map(([month]) => month),
+            labels: months.map(([m]) => m),
             datasets: [{
-                label: 'Uploads',
-                data: sortedMonths.map(([, count]) => count),
+                data: months.map(([, c]) => c),
                 fill: true,
-                backgroundColor: 'rgba(54, 162, 235, 0.2)',
-                borderColor: 'rgba(54, 162, 235, 1)',
-                tension: 0.4
-            }]
+                backgroundColor: 'rgba(59, 130, 246, 0.16)',
+                borderColor: '#3b82f6',
+                borderWidth: 2,
+                tension: 0.3,
+                pointRadius: months.length > 60 ? 0 : 2,
+                pointHoverRadius: 5,
+            }],
         },
-        options: {
-            responsive: true,
+        options: tmxChartOptions({
+            interaction: { mode: 'index', intersect: false },
             plugins: {
-                legend: { display: false }
-            }
-        }
+                tooltip: {
+                    callbacks: {
+                        title: (items) => {
+                            const [y, m] = items[0].label.split('-');
+                            const name = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
+                                'August', 'September', 'October', 'November', 'December'][+m - 1];
+                            return `${name} ${y}`;
+                        },
+                        label: (item) => `${tmxNum(item.parsed.y)} tracks uploaded`,
+                    },
+                },
+            },
+            scales: {
+                x: { ticks: { maxTicksLimit: 12, font: { size: 10 }, color: t.muted } },
+                y: { title: { display: true, text: 'Tracks uploaded', color: t.muted, font: { size: 11 } } },
+            },
+        }),
     });
 }
 
+const TMX_STYLE_NAMES = {
+    0: 'Normal', 1: 'Stunt', 2: 'Maze', 3: 'Offroad', 4: 'Laps', 5: 'Fullspeed',
+    6: 'LOL', 7: 'Tech', 8: 'SpeedTech', 9: 'RPG', 10: 'PressForward',
+    11: 'Trial', 12: 'Grass', Unknown: 'Unknown',
+};
+
+/**
+ * Tag frequency.
+ *
+ * This chart used to read `track.PrimaryType` - the TrackMania *track type*,
+ * which is "Race" for very nearly every map - and then look it up in a table of
+ * tag names. That is why the legend showed tags while the arc was 100% one
+ * slice. Tags live in `track.Tags` (an array; a map can carry several), with
+ * the legacy single `track.Style` as a fallback.
+ *
+ * Because one map can hold several tags the counts do not sum to the number of
+ * tracks, so this is a bar chart rather than a doughnut.
+ */
+/** Canonical TMX tag ids, from /api/meta/tags. Identical on all five sites. */
+const TMX_TAG_NAMES = {
+    0: 'Race', 1: 'Stunt', 2: 'Maze', 3: 'Offroad', 4: 'Multilap', 5: 'FullSpeed',
+    6: 'LOL', 7: 'Tech', 8: 'SpeedTech', 9: 'RPG', 10: 'PressForward', 11: 'Trial',
+    12: 'Grass', 13: 'Story', 14: 'Nascar', 15: 'Speedfun', 16: 'Endurance',
+    17: 'Altered Nadeo', 18: 'Transitional',
+};
+
 function renderEnvironmentChart(stats) {
-    const ctx = document.getElementById('environmentChart');
-    const sortedEnvs = Object.entries(stats.environments)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 10);
-    
-    const styleMap = {
-        0: 'Normal',
-        1: 'Stunt',
-        2: 'Maze',
-        3: 'Offroad',
-        4: 'Laps',
-        5: 'Fullspeed',
-        6: 'LOL',
-        7: 'Tech',
-        8: 'SpeedTech',
-        9: 'RPG',
-        10: 'PressForward',
-        11: 'Trial',
-        12: 'Grass',
-        'Unknown': 'Unknown' // Handle the unknown category
-    };
-    
+    const ctx = tmxCanvas('environmentChart');
+    if (!ctx) return;
+
+    const entries = Object.entries(stats.tagCounts || {})
+        .map(([id, count]) => [TMX_TAG_NAMES[id] || ('Tag ' + id), count])
+        .sort((a, b) => b[1] - a[1]);
+
+    const tagged = stats.taggedTracks || 0;
+    const t = tmxChartTheme();
+
+    if (!entries.length) {
+        const wrap = ctx.parentNode;
+        if (wrap) wrap.insertAdjacentHTML('beforeend',
+            '<p class="tmx-dl-hint">None of these tracks carry a tag.</p>');
+        return;
+    }
+
     new Chart(ctx, {
-        type: 'pie',
+        type: 'bar',
         data: {
-            labels: sortedEnvs.map(([styleKey, count]) => styleMap[styleKey] || `Other (${styleKey})`),
+            labels: entries.map(([name]) => name),
             datasets: [{
-                data: sortedEnvs.map(([, count]) => count),
-                backgroundColor: [
-                    'rgba(255, 99, 132, 0.6)',
-                    'rgba(54, 162, 235, 0.6)',
-                    'rgba(255, 206, 86, 0.6)',
-                    'rgba(75, 192, 192, 0.6)',
-                    'rgba(153, 102, 255, 0.6)',
-                    'rgba(255, 159, 64, 0.6)',
-                    'rgba(199, 199, 199, 0.6)',
-                    'rgba(83, 102, 255, 0.6)',
-                    'rgba(255, 99, 255, 0.6)',
-                    'rgba(99, 255, 132, 0.6)'
-                ]
-            }]
+                data: entries.map(([, c]) => c),
+                backgroundColor: entries.map((_, i) => TMX_PALETTE[i % TMX_PALETTE.length]),
+                borderRadius: 4,
+                borderSkipped: false,
+            }],
         },
-        options: {
-            responsive: true,
+        options: tmxChartOptions({
+            indexAxis: 'y',
+            scales: {
+                x: {
+                    beginAtZero: true,
+                    grid: { color: t.grid, drawBorder: false },
+                    ticks: { color: t.muted, font: { size: 11 }, precision: 0 },
+                    title: { display: true, text: 'Tracks carrying the tag', color: t.muted, font: { size: 11 } },
+                },
+                y: {
+                    grid: { display: false, drawBorder: false },
+                    ticks: { color: t.text, font: { size: 11 } },
+                },
+            },
             plugins: {
-                legend: { position: 'right' }
-            }
-        }
+                tooltip: {
+                    callbacks: {
+                        label: (item) => {
+                            const n = item.parsed.x;
+                            const pct = tagged ? ` (${(n / tagged * 100).toFixed(1)}% of tagged tracks)` : '';
+                            return `${tmxNum(n)} tracks${pct}`;
+                        },
+                    },
+                },
+            },
+        }),
     });
 }
+
 
 // ============================================================================
 // EXPORT FUNCTIONS
@@ -1647,13 +2088,16 @@ function exportStatisticsJSON() {
         
         if (startBtn) {
             startBtn.disabled = false;
-            startBtn.textContent = 'Start Download';
+            startBtn.textContent = 'Start download';
             startBtn.style.background = '';
         }
         
         if (cancelBtn) {
-            cancelBtn.textContent = 'Cancel';
+            cancelBtn.textContent = 'Close';
         }
+
+        const progressWrap = document.getElementById('tmxProgressWrap');
+        if (progressWrap) progressWrap.hidden = true;
         
         if (downloadBtn) {
             downloadBtn.disabled = false;
@@ -1727,6 +2171,8 @@ function exportStatisticsJSON() {
   }
 
   function updateProgress(percent, text) {
+      const wrap = document.getElementById('tmxProgressWrap');
+      if (wrap) wrap.hidden = false;
       const progressBar = document.getElementById('progressBar');
       const progressText = document.getElementById('progressText');
       const progressContainer = document.getElementById('progressContainer');
@@ -1870,24 +2316,8 @@ function exportStatisticsJSON() {
             attributeFilter: ['class']
         });
 
-        // Watch for API URL changes
-        const apiUrlObserver = new MutationObserver((mutations) => {
-        mutations.forEach(mutation => {
-            if (mutation.attributeName === 'data-tmx-api-url') {
-                console.log('[TMX] 📡 API URL changed, updating status...');
-                TMX_STATE.realCount = null;
-                TMX_STATE.isFetchingCount = true;
-                updateStatus(true);
-                // Simulate a brief loading state
-                setTimeout(() => {
-                    TMX_STATE.isFetchingCount = false;
-                    updateStatus();
-                }, 300);
-            }
-        });
-    });
-        
-        apiUrlObserver.observe(document.documentElement, { attributes: true });
+        // (The old data-tmx-api-url attribute watcher lived here. Nothing writes
+        // that attribute now - new searches arrive via watchApiUrl instead.)
         
         console.log('[TMX] ✅ UI monitoring active');
     }
@@ -1910,21 +2340,26 @@ function exportStatisticsJSON() {
 
         console.log('[TMX] 🚀 Initializing for:', exchange.name);
 
-        // Listen for API capture events
-        window.addEventListener('tmx-api-captured', (e) => {
-          console.log('[TMX] 📡 API URL captured via event:', e.detail.url);
-          TMX_STATE.realCount = null;
-          CACHED_TRACK_DATA = null;
-          TMX_STATE.isFetchingCount = true;
-          updateStatus(true);
-          setTimeout(() => {
-              TMX_STATE.isFetchingCount = false;
-              updateStatus();
-          }, 300);
-      });
+        // Refresh the counter when the user runs a new search.
+        watchApiUrl('/api/tracks', (url) => {
+            console.log('[TMX] 📡 New search seen:', url);
+            TMX_STATE.lastApiUrl = url;
+            TMX_STATE.hasCapturedUrl = true;
+            TMX_STATE.realCount = null;
+            CACHED_TRACK_DATA = null;
+            TMX_STATE.isFetchingCount = true;
+            updateStatus(true);
+            setTimeout(() => {
+                TMX_STATE.isFetchingCount = false;
+                updateStatus();
+            }, 300);
+        });
 
-        // Poll for dropdown
-        const waitForDropdown = setInterval(() => {
+        // Poll for the FILTERS dropdown. It only exists once the user opens it,
+        // so this keeps watching rather than giving up - but a fresh init (SPA
+        // navigation) must retire the previous watcher or they stack up.
+        if (TMX_STATE.dropdownWatcher) clearInterval(TMX_STATE.dropdownWatcher);
+        const waitForDropdown = TMX_STATE.dropdownWatcher = setInterval(() => {
             const dropdown = document.querySelector('.dropdown-window-active');
             const filterHeader = dropdown?.querySelector('.filterselector-header');
 
@@ -1943,18 +2378,23 @@ function exportStatisticsJSON() {
             }
         }, 300);
 
-        // Safety timeout
+        // Safety net: if the dropdown is already open but the poll somehow has
+        // not caught it, build the UI now. Not finding one is the normal case
+        // on a fresh page load - the dropdown simply is not open yet, and the
+        // watcher above will pick it up the moment it is - so that is a debug
+        // line, not a warning.
         setTimeout(() => {
-            if (!TMX_STATE.isInitialized) {
-                console.warn('[TMX] ⚠️ Forcing initialization after timeout');
-                const dropdown = document.querySelector('.dropdown-window-active');
-                if (dropdown) {
-                    createUI(dropdown);
-                    createModal();
-                    startUIMonitoring();
-                    TMX_STATE.isInitialized = true;
-                    updateStatus();
-                }
+            if (TMX_STATE.isInitialized) return;
+            const dropdown = document.querySelector('.dropdown-window-active');
+            if (dropdown) {
+                console.log('[TMX] Building UI from the already-open dropdown');
+                createUI(dropdown);
+                createModal();
+                startUIMonitoring();
+                TMX_STATE.isInitialized = true;
+                updateStatus();
+            } else {
+                console.debug('[TMX] Filters dropdown not open yet - still watching.');
             }
         }, 3000);
     }

@@ -1,34 +1,8 @@
 // ============================================================================
-// PART 1: EARLY INJECTION - Runs before page scripts (for /api/trackpacks)
+// The search URL this page used is read from the Resource Timing API when it is
+// needed (see findApiUrlFromTimings). Nothing is hooked and no script is
+// injected into the page.
 // ============================================================================
-(function injectInterceptor() {
-    const scriptEl = document.createElement('script');
-    scriptEl.textContent = `
-        (function() {
-            const originalFetch = window.fetch;
-            window.fetch = function(...args) {
-                const url = args[0] instanceof Request ? args[0].url : args[0];
-                if (typeof url === 'string') {
-                    if (url.includes('/api/trackpacks')) {
-                        const absoluteUrl = url.startsWith('http') ? url : new URL(url, window.location.origin).href;
-                        document.documentElement.setAttribute('data-tmx-pack-api-url', absoluteUrl);
-                        window.dispatchEvent(new CustomEvent('tmx-pack-api-captured', { detail: { url: absoluteUrl } }));
-                        console.log('[TMX Fetch Intercept] ✅ Packs Captured:', absoluteUrl);
-                    } else if (url.includes('/api/tracks')) {
-                        const absoluteUrl = url.startsWith('http') ? url : new URL(url, window.location.origin).href;
-                        document.documentElement.setAttribute('data-tmx-api-url', absoluteUrl);
-                        window.dispatchEvent(new CustomEvent('tmx-api-captured', { detail: { url: absoluteUrl } }));
-                        console.log('[TMX Fetch Intercept] ✅ Tracks Captured:', absoluteUrl);
-                    }
-                }
-                return originalFetch.apply(this, args);
-            };
-            console.log('[TMX] Fetch interceptor installed');
-        })();
-    `;
-    (document.head || document.documentElement).appendChild(scriptEl);
-    scriptEl.remove(); // Clean up immediately
-})();
 
 // ============================================================================
 // PART 2: SCRIPT - Runs after DOM is ready
@@ -161,9 +135,62 @@
         return selected;
     }
 
+    // ------------------------------------------------------------------
+    // Finding the search the page itself ran
+    //
+    // Earlier versions replaced window.fetch to record request URLs. Mozilla
+    // reviewed that as monitoring the user's network activity, which needs an
+    // explicit consent flow, and they were right to: patching fetch observes
+    // every request the page makes, not just the one we care about.
+    //
+    // Resource Timing gives us the same answer without any of that. It is a
+    // standard, read-only browser API listing resources the page has already
+    // loaded. Nothing is hooked, nothing is injected into the page, no request
+    // is observed as it happens, and no data leaves the browser - we simply
+    // look up the search URL this page already used so a download can reuse it
+    // verbatim instead of guessing it from the address bar.
+    // ------------------------------------------------------------------
+    function findApiUrlFromTimings(fragment) {
+        let entries;
+        try {
+            entries = performance.getEntriesByType('resource');
+        } catch (e) {
+            return null;
+        }
+        if (!entries || !entries.length) return null;
+
+        // Most recent match wins: the newest search is the current one.
+        for (let i = entries.length - 1; i >= 0; i--) {
+            const name = entries[i] && entries[i].name;
+            if (typeof name === 'string' && name.indexOf(fragment) !== -1) return name;
+        }
+        return null;
+    }
+
+    /**
+     * Calls `onFound` whenever the page loads a new URL containing `fragment`.
+     * PerformanceObserver is the passive counterpart to the lookup above.
+     */
+    function watchApiUrl(fragment, onFound) {
+        if (typeof PerformanceObserver === 'undefined') return;
+        try {
+            const observer = new PerformanceObserver((list) => {
+                for (const entry of list.getEntries()) {
+                    if (entry && typeof entry.name === 'string' && entry.name.indexOf(fragment) !== -1) {
+                        onFound(entry.name);
+                        return;
+                    }
+                }
+            });
+            observer.observe({ type: 'resource', buffered: false });
+        } catch (e) {
+            console.debug('[TMX] Resource timing observer unavailable:', e);
+        }
+    }
+
     function getApiUrlSafe() {
         // METHOD 1: Check DOM attribute 
-        const domUrl = document.documentElement.getAttribute('data-tmx-pack-api-url');
+        const domUrl = findApiUrlFromTimings('/api/trackpacks');
         if (domUrl) {
             try {
                 new URL(domUrl);
@@ -212,15 +239,12 @@
     }
 
     function loadJSZip() {
-      return new Promise((resolve, reject) => {
-        if (window.JSZip) return resolve();
-
-        const script = document.createElement('script');
-        script.src = chrome.runtime.getURL('jszip.min.js');
-        script.onload = resolve;
-        script.onerror = () => reject(new Error('Failed to load JSZip'));
-        document.head.appendChild(script);
-      });
+      // JSZip is bundled with this extension (jszip.min.js, declared in the
+      // manifest's content_scripts) and is already present in this world.
+      // Nothing is fetched from a remote origin.
+      return window.JSZip
+          ? Promise.resolve()
+          : Promise.reject(new Error('Bundled JSZip library failed to load'));
     }
 
     // ============================================================================
@@ -1067,24 +1091,8 @@
             attributeFilter: ['class']
         });
 
-        // Watch for API URL changes
-        const apiUrlObserver = new MutationObserver((mutations) => {
-            mutations.forEach(mutation => {
-                if (mutation.attributeName === 'data-tmx-pack-api-url') {
-                    console.log('[TMX-PACK] 📡 API URL changed, updating status...');
-                    TMX_STATE.realCount = null;
-                    TMX_STATE.isFetchingCount = true;
-                    updateStatus(true);
-                    // Simulate a brief loading state
-                    setTimeout(() => {
-                        TMX_STATE.isFetchingCount = false;
-                        updateStatus();
-                    }, 300);
-                }
-            });
-        });
-        
-        apiUrlObserver.observe(document.documentElement, { attributes: true });
+        // (The old data-tmx-pack-api-url attribute watcher lived here. Nothing
+        // writes that attribute now - new searches arrive via watchApiUrl.)
         
         console.log('[TMX-PACK] ✅ UI monitoring active');
     }
@@ -1107,9 +1115,9 @@
 
         console.log('[TMX-PACK] 🚀 Initializing for:', exchange.name);
 
-        // Listen for API capture events
-        window.addEventListener('tmx-pack-api-captured', (e) => {
-            console.log('[TMX-PACK] 📡 API URL captured via event:', e.detail.url);
+        // Refresh the counter when the user runs a new pack search.
+        watchApiUrl('/api/trackpacks', (url) => {
+            console.log('[TMX-PACK] 📡 New search seen:', url);
             TMX_STATE.realCount = null;
             TMX_STATE.isFetchingCount = true;
             updateStatus(true);

@@ -1,9 +1,8 @@
 {
   "manifest_version": 3,
   "name": "TMX Universal Track Downloader",
-  "version": "1.3.1",
+  "version": "1.6.0",
   "description": "Bulk download tracks and trackpacks from all TMX exchanges",
-  "permissions": ["scripting"],
   "host_permissions": [
     "*://tmnf.exchange/*",
     "*://tmuf.exchange/*",
@@ -11,6 +10,9 @@
     "*://sunrise.tm-exchange.com/*",
     "*://nations.tm-exchange.com/*"
   ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
   "background": {
     "service_worker": "background.js"
   },
@@ -23,8 +25,16 @@
         "*://sunrise.tm-exchange.com/tracksearch*",
         "*://nations.tm-exchange.com/tracksearch*"
       ],
-      "css": ["styles.css"],
-      "js": ["jszip.min.js", "chart.min.js", "content.js"],
+      "css": [
+        "styles.css"
+      ],
+      "js": [
+        "exclusions-data.js",
+        "exclusions.js",
+        "jszip.min.js",
+        "chart.min.js",
+        "content.js"
+      ],
       "run_at": "document_end"
     },
     {
@@ -35,8 +45,16 @@
         "*://sunrise.tm-exchange.com/trackpacksearch*",
         "*://nations.tm-exchange.com/trackpacksearch*"
       ],
-      "css": ["styles.css"],
-      "js": ["jszip.min.js", "chart.min.js", "trackpack.js"],
+      "css": [
+        "styles.css"
+      ],
+      "js": [
+        "exclusions-data.js",
+        "exclusions.js",
+        "jszip.min.js",
+        "chart.min.js",
+        "trackpack.js"
+      ],
       "run_at": "document_end"
     },
     {
@@ -47,8 +65,16 @@
         "*://sunrise.tm-exchange.com/trackshow/*",
         "*://nations.tm-exchange.com/trackshow/*"
       ],
-      "css": ["styles.css"],
-      "js": ["jszip.min.js", "chart.min.js", "trackshow.js"],
+      "css": [
+        "styles.css"
+      ],
+      "js": [
+        "exclusions-data.js",
+        "exclusions.js",
+        "jszip.min.js",
+        "chart.min.js",
+        "trackshow.js"
+      ],
       "run_at": "document_end"
     },
     {
@@ -59,7 +85,9 @@
         "*://sunrise.tm-exchange.com/trackbeta*",
         "*://nations.tm-exchange.com/trackbeta*"
       ],
-      "js": ["beta-notice.js"],  
+      "js": [
+        "beta-notice.js"
+      ],
       "run_at": "document_end"
     },
     {
@@ -70,8 +98,12 @@
         "*://sunrise.tm-exchange.com/usersearch*",
         "*://nations.tm-exchange.com/usersearch*"
       ],
-      "css": ["styles.css"],
-      "js": ["users.js"],
+      "css": [
+        "styles.css"
+      ],
+      "js": [
+        "users.js"
+      ],
       "run_at": "document_end"
     },
     {
@@ -82,8 +114,12 @@
         "*://sunrise.tm-exchange.com/usershow*",
         "*://nations.tm-exchange.com/usershow*"
       ],
-      "css": ["styles.css"],
-      "js": ["users.js"],
+      "css": [
+        "styles.css"
+      ],
+      "js": [
+        "users.js"
+      ],
       "run_at": "document_end"
     }
   ],

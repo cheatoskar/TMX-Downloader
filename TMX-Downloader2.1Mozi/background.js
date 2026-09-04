@@ -2,42 +2,9 @@
 'use strict';
 
 browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'injectFetchOverride') {
-    browser.tabs.executeScript(sender.tab.id, {
-      code: `
-        (function() {
-          const originalFetch = window.fetch;
-          window.fetch = function(...args) {
-            const url = args[0] instanceof Request ? args[0].url : args[0];
-            if (typeof url === 'string') {
-              if (url.includes('/api/tracks')) {
-                // Existing track logic
-                const absoluteUrl = url.startsWith('http') ? url : new URL(url, window.location.origin).href;
-                document.documentElement.setAttribute('data-tmx-api-url', absoluteUrl);
-                window.dispatchEvent(new CustomEvent('tmx-api-captured', { detail: { url: absoluteUrl } }));
-                console.log('[TMX Fetch Intercept] ✅ Tracks Captured:', absoluteUrl);
-              } else if (url.includes('/api/trackpacks')) {
-                // 🆕 New: Pack interception
-                const absoluteUrl = url.startsWith('http') ? url : new URL(url, window.location.origin).href;
-                document.documentElement.setAttribute('data-tmx-pack-api-url', absoluteUrl);
-                window.dispatchEvent(new CustomEvent('tmx-pack-api-captured', { detail: { url: absoluteUrl } }));
-                console.log('[TMX Fetch Intercept] ✅ Packs Captured:', absoluteUrl);
-              }
-            }
-            return originalFetch.apply(this, args);
-          };
-          console.log('[TMX] Fetch interceptor installed');
-        })();
-      `,
-      runAt: 'document_start'
-    }).then((results) => {
-      sendResponse({success: true});
-    }).catch((error) => {
-      sendResponse({success: false, error: error.message});
-    });
-    
-    return true; // Async response
-  }
+  // NOTE: the page-world fetch interceptor is injected by the content scripts
+  // themselves (see PART 1 of content.js / trackpack.js). No code is executed
+  // from a string, and no code is loaded from a remote origin.
 
   // fetchApi & fetchBinary (adapted for Firefox)
   if (request.action === 'fetchApi') {

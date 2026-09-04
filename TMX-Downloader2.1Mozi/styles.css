@@ -1599,89 +1599,6 @@ input:focus-visible {
     margin-top: 24px;
 }
 
-.tmx-author-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px;
-    border-bottom: 1px solid var(--border-color, #333);
-    transition: background 0.2s;
-}
-
-.tmx-author-item:last-child {
-    border-bottom: none;
-}
-
-.tmx-author-item:hover {
-    background: rgba(255,255,255,0.05);
-}
-
-.tmx-author-rank {
-    font-size: 18px;
-    font-weight: bold;
-    color: var(--primary-color, #4CAF50);
-    min-width: 40px;
-}
-
-.tmx-author-name {
-    flex: 1;
-    font-weight: 500;
-}
-
-.tmx-author-tracks {
-    color: var(--muted-textcolor, #aaa);
-    font-size: 13px;
-}
-
-.tmx-author-awards {
-    color: #FFD700;
-    font-weight: bold;
-}
-
-.tmx-awarded-track {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px;
-    border-bottom: 1px solid var(--border-color, #333);
-    transition: background 0.2s;
-}
-
-.tmx-awarded-track:last-child {
-    border-bottom: none;
-}
-
-.tmx-awarded-track:hover {
-    background: rgba(255,255,255,0.05);
-}
-
-.tmx-track-rank {
-    font-size: 20px;
-    font-weight: bold;
-    color: var(--primary-color, #4CAF50);
-    min-width: 40px;
-}
-
-.tmx-track-info {
-    flex: 1;
-}
-
-.tmx-track-name {
-    font-weight: 500;
-    margin-bottom: 4px;
-}
-
-.tmx-track-author {
-    font-size: 12px;
-    color: var(--muted-textcolor, #aaa);
-}
-
-.tmx-track-awards {
-    color: #FFD700;
-    font-size: 18px;
-    font-weight: bold;
-}
-
 .tmx-stats-footer {
     display: flex;
     gap: 12px;
@@ -1761,3 +1678,738 @@ input:focus-visible {
       border: 2px solid var(--border-color, #333);
       box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
   }
+
+/* ============================================================================
+   COMMUNITY EXCLUSION WARNINGS
+   Badges on search rows and a banner on the track page. Colour is carried by
+   a --tmx-excl-* trio so every tone is one declaration, and each tone pairs a
+   tinted surface with a saturated accent that stays legible on the light and
+   dark TMX skins alike.
+   ============================================================================ */
+
+.tmx-excl-danger {
+    --tmx-excl-accent: #e5484d;
+    --tmx-excl-surface: rgba(229, 72, 77, 0.13);
+    --tmx-excl-border: rgba(229, 72, 77, 0.42);
+}
+
+.tmx-excl-warn {
+    --tmx-excl-accent: #d97b0a;
+    --tmx-excl-surface: rgba(217, 123, 10, 0.14);
+    --tmx-excl-border: rgba(217, 123, 10, 0.42);
+}
+
+.tmx-excl-info {
+    --tmx-excl-accent: #3b82f6;
+    --tmx-excl-surface: rgba(59, 130, 246, 0.13);
+    --tmx-excl-border: rgba(59, 130, 246, 0.40);
+}
+
+.tmx-excl-neutral {
+    --tmx-excl-accent: #8b8d98;
+    --tmx-excl-surface: rgba(139, 141, 152, 0.15);
+    --tmx-excl-border: rgba(139, 141, 152, 0.40);
+}
+
+/* --- Badge -------------------------------------------------------------- */
+
+.tmx-excl-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 6px;
+    padding: 1px 6px;
+    border: 1px solid var(--tmx-excl-border);
+    border-radius: 4px;
+    background: var(--tmx-excl-surface);
+    color: var(--tmx-excl-accent);
+    font-size: 9.5px;
+    font-weight: 700;
+    line-height: 1.5;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    vertical-align: middle;
+    cursor: help;
+    /* The row link is often inside a flex cell that would stretch us. */
+    flex: 0 0 auto;
+}
+
+.tmx-excl-badge::before {
+    content: "\26A0";
+    font-size: 10px;
+    line-height: 1;
+}
+
+/* A tint on the whole row, so a page of results reads at a glance. */
+tr.tmx-excl-row > td {
+    background-image: linear-gradient(var(--tmx-excl-surface), var(--tmx-excl-surface));
+}
+
+/* --- Track page banner -------------------------------------------------- */
+
+.tmx-excl-banner {
+    margin: 0 0 14px 0;
+    padding: 14px 16px;
+    border: 1px solid var(--tmx-excl-border);
+    border-left: 4px solid var(--tmx-excl-accent);
+    border-radius: 6px;
+    background: var(--tmx-excl-surface);
+    color: var(--textcolor, inherit);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.tmx-excl-banner-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.tmx-excl-banner-head .tmx-excl-badge {
+    margin-left: 0;
+}
+
+.tmx-excl-banner-head strong {
+    font-size: 14px;
+    color: var(--tmx-excl-accent);
+}
+
+.tmx-excl-banner-blurb {
+    margin: 0 0 10px 0;
+    opacity: 0.92;
+}
+
+.tmx-excl-banner-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 4px 14px;
+    margin-bottom: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--tmx-excl-border);
+}
+
+.tmx-excl-banner-row {
+    display: contents;
+}
+
+.tmx-excl-key {
+    font-weight: 600;
+    white-space: nowrap;
+    opacity: 0.65;
+}
+
+.tmx-excl-banner-foot {
+    font-size: 11.5px;
+    opacity: 0.7;
+}
+
+.tmx-excl-banner-foot a {
+    color: var(--tmx-excl-accent);
+    text-decoration: underline;
+}
+
+@media (max-width: 600px) {
+    .tmx-excl-banner-grid {
+        grid-template-columns: 1fr;
+        gap: 2px;
+    }
+
+    .tmx-excl-banner-row {
+        display: block;
+        margin-bottom: 6px;
+    }
+
+    .tmx-excl-key {
+        display: block;
+    }
+}
+
+/* ============================================================================
+   DOWNLOAD MODAL - REDESIGN
+   A fixed header and footer with only the options scrolling between them, so
+   the primary action never scrolls out of reach. Sections are grouped by the
+   question they answer (how many / order / output) rather than by widget type.
+   ============================================================================ */
+
+.tmx-modal-content.tmx-dl {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    max-height: min(86vh, 780px);
+    width: min(520px, calc(100vw - 32px));
+    padding: 0;
+    overflow: hidden;
+}
+
+/* --- Header ------------------------------------------------------------- */
+
+.tmx-dl-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px 18px 12px;
+    border-bottom: 1px solid var(--muted-border-color, rgba(128, 128, 128, 0.25));
+}
+
+.tmx-dl-head h2 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 650;
+    line-height: 1.2;
+}
+
+.tmx-dl-sub {
+    margin: 2px 0 0;
+    font-size: 12px;
+    opacity: 0.6;
+}
+
+.tmx-dl-x {
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    font-size: 20px;
+    line-height: 1;
+    opacity: 0.5;
+    cursor: pointer;
+    transition: background 0.15s, opacity 0.15s;
+}
+
+.tmx-dl-x:hover {
+    background: var(--muted-border-color, rgba(128, 128, 128, 0.2));
+    opacity: 1;
+}
+
+/* --- Scrolling body ----------------------------------------------------- */
+
+.tmx-dl-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 14px 18px 18px;
+}
+
+/* The one sentence that says what the button will do. */
+.tmx-dl-summary {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    margin-bottom: 18px;
+    padding: 10px 12px;
+    border: 1px solid var(--muted-border-color, rgba(128, 128, 128, 0.25));
+    border-radius: 7px;
+    background: var(--muted-bg-color, rgba(128, 128, 128, 0.08));
+}
+
+.tmx-dl-summary-icon {
+    flex: 0 0 auto;
+    font-size: 14px;
+    line-height: 1.45;
+    opacity: 0.5;
+}
+
+.tmx-dl-summary p {
+    margin: 0;
+    font-size: 12.5px;
+    line-height: 1.45;
+}
+
+.tmx-dl-section {
+    margin-bottom: 18px;
+}
+
+.tmx-dl-section h3 {
+    margin: 0 0 7px;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    opacity: 0.5;
+}
+
+/* --- Segmented control -------------------------------------------------- */
+
+.tmx-seg {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 3px;
+    padding: 3px;
+    border: 1px solid var(--muted-border-color, rgba(128, 128, 128, 0.25));
+    border-radius: 8px;
+    background: var(--muted-bg-color, rgba(128, 128, 128, 0.08));
+}
+
+.tmx-seg.tmx-seg-3 {
+    grid-template-columns: repeat(3, 1fr);
+}
+
+.tmx-seg label {
+    position: relative;
+    margin: 0;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.tmx-seg input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.tmx-seg span {
+    display: block;
+    padding: 7px 6px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 550;
+    text-align: center;
+    white-space: nowrap;
+    opacity: 0.72;
+    transition: background 0.15s, opacity 0.15s, box-shadow 0.15s;
+}
+
+.tmx-seg label:hover span {
+    opacity: 1;
+}
+
+.tmx-seg input:checked + span {
+    /* Explicit pair - never inherit the page's text colour here, or a
+       dark TMX skin renders white text on a white chip. */
+    background: #3b82f6;
+    color: #ffffff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+    opacity: 1;
+    font-weight: 650;
+}
+
+.tmx-seg input:focus-visible + span {
+    outline: 2px solid #3b82f6;
+    outline-offset: 1px;
+}
+
+/* --- Number fields ------------------------------------------------------ */
+
+.tmx-dl-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.tmx-dl-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 0;
+    transition: opacity 0.15s;
+}
+
+.tmx-dl-field > span {
+    font-size: 11px;
+    font-weight: 550;
+    opacity: 0.65;
+}
+
+.tmx-dl-field input {
+    width: 100%;
+    padding: 7px 9px;
+    border: 1px solid var(--muted-border-color, rgba(128, 128, 128, 0.3));
+    border-radius: 6px;
+    background: var(--bg-color, transparent);
+    color: inherit;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+}
+
+.tmx-dl-field input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.tmx-dl-field-off {
+    opacity: 0.4;
+}
+
+.tmx-dl-hint {
+    margin: 7px 0 0;
+    font-size: 11.5px;
+    line-height: 1.4;
+    opacity: 0.6;
+}
+
+.tmx-dl-hint-warn {
+    color: #d97b0a;
+    opacity: 1;
+}
+
+/* --- Checkbox rows ------------------------------------------------------ */
+
+.tmx-dl-checks {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 10px;
+}
+
+.tmx-check {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    margin: 0;
+    padding: 7px 9px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s, opacity 0.15s;
+}
+
+.tmx-check:hover {
+    background: var(--muted-bg-color, rgba(128, 128, 128, 0.08));
+}
+
+.tmx-check input {
+    flex: 0 0 auto;
+    width: 15px;
+    height: 15px;
+    margin: 1px 0 0;
+    accent-color: #3b82f6;
+    cursor: pointer;
+}
+
+.tmx-check span {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.tmx-check strong {
+    font-size: 12.5px;
+    font-weight: 550;
+}
+
+.tmx-check small {
+    font-size: 11px;
+    line-height: 1.35;
+    opacity: 0.6;
+}
+
+.tmx-check-sub {
+    margin-left: 22px;
+}
+
+.tmx-check-tight small {
+    font-size: 10.5px;
+}
+
+.tmx-check-off {
+    opacity: 0.4;
+}
+
+.tmx-check-off input {
+    cursor: not-allowed;
+}
+
+/* --- Advanced (multi-exchange) ------------------------------------------ */
+
+.tmx-dl-adv {
+    margin-bottom: 18px;
+    border: 1px solid var(--muted-border-color, rgba(128, 128, 128, 0.25));
+    border-radius: 7px;
+}
+
+.tmx-dl-adv summary {
+    padding: 9px 12px;
+    font-size: 12px;
+    font-weight: 550;
+    list-style: none;
+    cursor: pointer;
+    opacity: 0.8;
+}
+
+.tmx-dl-adv summary::-webkit-details-marker {
+    display: none;
+}
+
+.tmx-dl-adv summary::before {
+    content: "\25B8";
+    display: inline-block;
+    margin-right: 7px;
+    font-size: 10px;
+    opacity: 0.6;
+    transition: transform 0.15s;
+}
+
+.tmx-dl-adv[open] summary::before {
+    transform: rotate(90deg);
+}
+
+.tmx-dl-adv-body {
+    padding: 0 6px 8px;
+}
+
+.tmx-dl-exchanges {
+    display: none;
+    margin-top: 4px;
+    margin-left: 22px;
+    padding-left: 10px;
+    border-left: 2px solid var(--muted-border-color, rgba(128, 128, 128, 0.25));
+}
+
+/* --- Progress ----------------------------------------------------------- */
+
+.tmx-dl-progress-wrap[hidden] {
+    display: none;
+}
+
+/* Mirrors of the legacy checkboxes - present for the download logic, never
+   shown to anyone. */
+.tmx-dl-mirror {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* --- Footer ------------------------------------------------------------- */
+
+.tmx-dl-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex: 0 0 auto;
+    padding: 12px 18px;
+    border-top: 1px solid var(--muted-border-color, rgba(128, 128, 128, 0.25));
+    background: var(--muted-bg-color, rgba(128, 128, 128, 0.05));
+}
+
+.tmx-dl-foot-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.tmx-dl-foot .tmx-btn {
+    margin: 0;
+    width: auto;
+    padding: 8px 16px;
+    font-size: 12.5px;
+}
+
+.tmx-btn-ghost {
+    background: transparent;
+    border: 1px solid var(--muted-border-color, rgba(128, 128, 128, 0.3));
+    color: inherit;
+    opacity: 0.8;
+}
+
+.tmx-btn-ghost:hover {
+    background: var(--muted-border-color, rgba(128, 128, 128, 0.18));
+    opacity: 1;
+}
+
+@media (max-width: 560px) {
+    .tmx-dl-fields,
+    .tmx-seg.tmx-seg-3 {
+        grid-template-columns: 1fr;
+    }
+
+    .tmx-dl-foot {
+        flex-direction: column-reverse;
+        align-items: stretch;
+    }
+
+    .tmx-dl-foot-actions {
+        justify-content: stretch;
+    }
+
+    .tmx-dl-foot-actions .tmx-btn {
+        flex: 1;
+    }
+}
+
+/* --- Statistics charts: sizing and the author ranking list -------------- */
+
+/* maintainAspectRatio is off so every chart needs a real height to draw into. */
+.tmx-chart-container canvas {
+    width: 100% !important;
+    height: 300px !important;
+    max-height: none;
+}
+
+#authorsChart {
+    height: 420px !important;
+}
+
+.tmx-author-item {
+    display: grid;
+    grid-template-columns: 26px minmax(90px, 1fr) 2.2fr auto auto;
+    align-items: center;
+    gap: 10px;
+    padding: 5px 8px;
+    border-radius: 5px;
+    font-size: 12px;
+}
+
+.tmx-author-item:nth-child(odd) {
+    background: rgba(128, 128, 128, 0.06);
+}
+
+.tmx-author-rank {
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    text-align: right;
+    opacity: 0.45;
+}
+
+.tmx-author-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 550;
+}
+
+.tmx-author-bar {
+    display: block;
+    height: 6px;
+    border-radius: 3px;
+    background: rgba(128, 128, 128, 0.18);
+    overflow: hidden;
+}
+
+.tmx-author-bar i {
+    display: block;
+    height: 100%;
+    border-radius: 3px;
+    background: #a855f7;
+}
+
+.tmx-author-tracks,
+.tmx-author-awards {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    text-align: right;
+}
+
+.tmx-author-awards {
+    min-width: 62px;
+    opacity: 0.65;
+}
+
+/* --- Most awarded list -------------------------------------------------- */
+
+.tmx-awarded-track {
+    display: grid;
+    grid-template-columns: 26px minmax(120px, 1.6fr) 1.4fr auto;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px;
+    border-radius: 5px;
+    color: inherit;
+    font-size: 12px;
+    text-decoration: none;
+    transition: background 0.15s;
+}
+
+.tmx-awarded-track:hover {
+    background: rgba(128, 128, 128, 0.12);
+    text-decoration: none;
+}
+
+.tmx-track-rank {
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    text-align: right;
+    opacity: 0.45;
+}
+
+.tmx-track-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.tmx-track-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 550;
+}
+
+.tmx-track-author {
+    font-size: 11px;
+    opacity: 0.55;
+}
+
+.tmx-track-bar {
+    display: block;
+    height: 6px;
+    border-radius: 3px;
+    background: rgba(128, 128, 128, 0.18);
+    overflow: hidden;
+}
+
+.tmx-track-bar i {
+    display: block;
+    height: 100%;
+    border-radius: 3px;
+    background: #eab308;
+}
+
+.tmx-track-awards {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    text-align: right;
+    opacity: 0.75;
+}
+
+@media (max-width: 620px) {
+    .tmx-awarded-track,
+    .tmx-author-item {
+        grid-template-columns: 24px 1fr auto;
+    }
+
+    .tmx-track-bar,
+    .tmx-author-bar {
+        display: none;
+    }
+}
+
+
+/* Rank column: wide enough for three digits, always ahead of the name. */
+.tmx-author-item {
+    grid-template-columns: 30px minmax(90px, 1fr) 2.2fr auto auto;
+}
+
+.tmx-awarded-track {
+    grid-template-columns: 30px minmax(120px, 1.6fr) 1.4fr auto;
+}
+
+.tmx-author-rank,
+.tmx-track-rank {
+    min-width: 0;
+    font-size: 12px;
+}
+
+.tmx-author-awards,
+.tmx-track-awards {
+    color: #d9a406;
+    font-size: 12px;
+    font-weight: 600;
+    opacity: 1;
+}
+
+/* Tag frequency is a horizontal bar chart - one map carries several tags,
+   so it is not a part-of-whole and must not be a doughnut. */
+#environmentChart {
+    height: 400px !important;
+}

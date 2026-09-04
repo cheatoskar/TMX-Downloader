@@ -970,14 +970,10 @@
             return;
         }
 
+        // Chart.js is bundled with this extension (chart.min.js, declared in the
+        // manifest's content_scripts). It is never fetched from a remote origin.
         if (typeof Chart === 'undefined') {
-            console.error('[TMX] Chart.js library missing. Check manifest loading order.');
-            return;
-        }
-        
-        if (!window.Chart) {
-            console.error('[TMX] Chart.js not loaded');
-            loadChartJS().then(() => renderTimeChart(stats));
+            console.error('[TMX] Bundled Chart.js (chart.min.js) is not available.');
             return;
         }
         
@@ -1214,15 +1210,12 @@
     // JSZIP LOADER
     // ============================================================================
     async function loadJSZip() {
-        return new Promise((resolve, reject) => {
-            if (window.JSZip) return resolve();
-            
-            const script = document.createElement('script');
-            script.src = chrome.runtime.getURL('jszip.min.js');
-            script.onload = () => resolve();
-            script.onerror = () => reject(new Error('Failed to load JSZip'));
-            document.head.appendChild(script);
-        });
+        // JSZip is bundled with this extension (jszip.min.js, declared in the
+        // manifest's content_scripts) and is already present in this world.
+        // Nothing is fetched from a remote origin.
+        return window.JSZip
+            ? Promise.resolve()
+            : Promise.reject(new Error('Bundled JSZip library failed to load'));
     }
 
     // ============================================================================

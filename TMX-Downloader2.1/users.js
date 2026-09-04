@@ -48,21 +48,67 @@
     // ============================================================================
     // PROXY HELPERS (Reuse existing)
     // ============================================================================
+    // Despite the name this used to call fetch() straight from the content
+    // script, with a Content-Type header on a GET. That is what produced the
+    // bare "TypeError: Failed to fetch" on /usershow: the request is subject to
+    // the page's own CORS rules and the extra header pushes it out of the
+    // simple-request set. Every other script in this extension goes through the
+    // background worker, which holds the host permissions and is not bound by
+    // page CORS - so this one does now too.
+    // Use the callback form of the `chrome` namespace on both browsers. Firefox
+    // provides it for compatibility and content.js already relies on it there;
+    // `browser.runtime.sendMessage` is promise-based and would silently ignore a
+    // callback, leaving this hanging forever.
+    function backgroundFetchJson(url) {
+        return new Promise((resolve, reject) => {
+            if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.sendMessage) {
+                reject(new Error('No extension messaging available'));
+                return;
+            }
+
+            let settled = false;
+            const done = (fn, arg) => { if (!settled) { settled = true; fn(arg); } };
+
+            // A sleeping worker that never wakes would otherwise hang the page.
+            const timer = setTimeout(() => done(reject, new Error('Background fetch timed out')), 20000);
+            const finish = (fn, arg) => { clearTimeout(timer); done(fn, arg); };
+
+            try {
+                chrome.runtime.sendMessage({ action: 'fetchApi', url }, (res) => {
+                    if (chrome.runtime.lastError) {
+                        finish(reject, new Error(chrome.runtime.lastError.message));
+                    } else if (res && res.success) {
+                        finish(resolve, res.data);
+                    } else {
+                        finish(reject, new Error((res && res.error) || 'Background fetch failed'));
+                    }
+                });
+            } catch (err) {
+                finish(reject, err);
+            }
+        });
+    }
+
     async function proxyFetchJson(url) {
         console.log('[TMX] Fetching:', url);
         try {
-            const response = await fetch(url, {
-                method: 'GET',
-                headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json'
-                }
-            });
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            return await response.json();
-        } catch (error) {
-            console.error('[TMX] Fetch error:', error);
-            throw error;
+            return await backgroundFetchJson(url);
+        } catch (bgError) {
+            // The worker can be asleep or the message port torn down mid-flight.
+            // A same-origin direct fetch is a reasonable last resort.
+            console.warn('[TMX] Background fetch failed, retrying directly:', bgError.message);
+            try {
+                const response = await fetch(url, {
+                    method: 'GET',
+                    credentials: 'include',
+                    headers: { 'Accept': 'application/json' },
+                });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                return await response.json();
+            } catch (error) {
+                console.error('[TMX] Fetch error:', error);
+                throw error;
+            }
         }
     }
 
