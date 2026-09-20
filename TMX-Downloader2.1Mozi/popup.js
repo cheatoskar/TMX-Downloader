@@ -9,9 +9,6 @@
     const api = typeof browser !== 'undefined' ? browser : chrome;
 
     const enabled = document.getElementById('enabled');
-    const keyBlock = document.getElementById('keyblock');
-    const key = document.getElementById('key');
-    const save = document.getElementById('save');
     const dot = document.getElementById('dot');
     const note = document.getElementById('note');
     const last = document.getElementById('last');
@@ -39,10 +36,9 @@
             return;
         }
         enabled.checked = status.enabled;
-        keyBlock.classList.toggle('hidden', !status.enabled);
 
         dot.className = 'dot';
-        if (status.enabled && status.port) dot.classList.add('on');
+        if (status.enabled && status.port && status.hasKey) dot.classList.add('on');
         else if (status.enabled) dot.classList.add('warn');
         note.textContent = status.note || '';
 
@@ -53,10 +49,6 @@
         } else {
             last.classList.add('hidden');
         }
-
-        // Never shown back: the field is for pasting a new one, and printing a
-        // secret into a window that can be screenshotted serves nobody.
-        key.placeholder = status.hasKey ? 'key saved — paste a new one to replace it' : 'pairing key from the mod';
     }
 
     async function refresh() {
@@ -67,18 +59,6 @@
     enabled.addEventListener('change', async () => {
         await send({ action: 'bridgeSet', enabled: enabled.checked });
         await refresh();
-    });
-
-    save.addEventListener('click', async () => {
-        const value = key.value.trim();
-        if (!value) return;
-        await send({ action: 'bridgeSet', key: value, enabled: true });
-        key.value = '';
-        await refresh();
-    });
-
-    key.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter') save.click();
     });
 
     void refresh();

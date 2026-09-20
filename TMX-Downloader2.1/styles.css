@@ -2513,3 +2513,87 @@ tr.tmx-excl-row > td {
     color: var(--tmx-p100-accent);
     text-decoration: underline;
 }
+
+/* ============================================================================
+   THE REPLAY BRIDGE, ON /replayupload
+   One card above the upload form. Same shape as the two badge blocks above -
+   tinted surface, saturated accent, a left edge - because it sits on the same
+   pages and a third visual language would read as a third extension.
+   ============================================================================ */
+
+.tmx-bridge-card {
+    --tmx-bridge-accent: #2f9e5e;
+    margin: 0 0 14px 0;
+    padding: 14px 16px;
+    border: 1px solid rgba(47, 158, 94, 0.42);
+    border-left: 4px solid var(--tmx-bridge-accent);
+    border-radius: 6px;
+    background: rgba(47, 158, 94, 0.10);
+    color: var(--textcolor, inherit);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.tmx-bridge-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.tmx-bridge-head strong {
+    font-size: 14px;
+    color: var(--tmx-bridge-accent);
+}
+
+.tmx-bridge-dot {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #8b8d98;
+    flex: 0 0 auto;
+}
+
+.tmx-bridge-dot.on { background: var(--tmx-bridge-accent); }
+.tmx-bridge-dot.waiting { background: #d97b0a; }
+
+.tmx-bridge-blurb {
+    margin: 0 0 10px 0;
+    opacity: 0.92;
+}
+
+.tmx-bridge-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.tmx-bridge-btn {
+    padding: 5px 12px;
+    border: 1px solid rgba(47, 158, 94, 0.5);
+    border-radius: 5px;
+    background: rgba(47, 158, 94, 0.16);
+    color: var(--tmx-bridge-accent);
+    font: inherit;
+    font-weight: 600;
+    font-size: 12.5px;
+    cursor: pointer;
+}
+
+.tmx-bridge-btn:hover:not(:disabled) { background: rgba(47, 158, 94, 0.26); }
+.tmx-bridge-btn:disabled { opacity: 0.6; cursor: default; }
+
+.tmx-bridge-link {
+    color: var(--tmx-bridge-accent);
+    font-size: 11.5px;
+    text-decoration: underline;
+}
+
+.tmx-bridge-note {
+    margin: 8px 0 0 0;
+    font-size: 11.5px;
+    opacity: 0.8;
+}
+
+.tmx-bridge-note.bad { color: #d97b0a; opacity: 1; }

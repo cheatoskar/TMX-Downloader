@@ -15,7 +15,7 @@ cd TMX-Downloader2.1Mozi
 zip -r -X ../TMX-Downloader-<version>-firefox.zip \
     manifest.json background.js bridge.js beta-notice.js content.js \
     trackpack.js trackshow.js users.js exclusions-data.js exclusions.js \
-    project.js popup.html popup.js \
+    project.js upload-page.js popup.html popup.js \
     chart.min.js jszip.min.js styles.css icons/
 ```
 
@@ -92,9 +92,14 @@ a TMX password so that it could would be the wrong answer to the problem.
 So the mod offers the file on loopback and this extension uploads it:
 
 1. The mod (open source: https://github.com/cheatoskar/100-TMX-Bingo-Plugin)
-   opens a socket bound to `127.0.0.1` only, guarded by a random key it prints
-   in its own settings window. The user copies that key into this extension's
-   popup.
+   opens a socket bound to `127.0.0.1` only, guarded by a random key it
+   generates. The user switches the bridge on here - in the toolbar popup, or
+   with the button this adds to the exchange's own `/replayupload` page - and
+   the extension asks the mod for that key. The mod does not hand it over on
+   asking: it puts "A browser wants to connect - Allow / No" on the panel in
+   the game, and only a person pressing Allow there releases it. Nothing is
+   typed or copied, and the secret still never leaves the machine without a
+   deliberate act.
 2. `bridge.js` long-polls `http://127.0.0.1:2731x/v1/next`. When a replay is
    waiting it fetches the bytes from the mod, reads the antiforgery token from
    the exchange's own `/replayupload` page, and posts the file to that

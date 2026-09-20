@@ -1,6 +1,6 @@
 # Privacy Policy — TMX Universal Track Downloader
 
-**Last updated: 20 September 2026** (extension 1.7.0 for Chrome, 2.7.0 for Firefox)
+**Last updated: 20 September 2026** (extension 1.7.1 for Chrome, 2.7.1 for Firefox)
 
 The short version: nothing about you is collected, stored or sold. There is no
 account, no analytics, no tracking, and no server of ours that ever learns who
@@ -19,7 +19,7 @@ leave it:
 | Stored | Why |
 |---|---|
 | Whether the replay bridge is switched on | So it stays as you left it |
-| The pairing key the game mod showed you | So the bridge can prove it is you asking the mod for a file |
+| The pairing key the game mod released to you | So the bridge can prove it is you asking the mod for a file |
 
 Uninstalling the extension deletes both. Neither is ever sent to anybody but
 the game mod on your own machine.
@@ -59,8 +59,9 @@ browser, rather than anybody handing a password to the game.
   stored — not by the extension, not by the game mod, not by any server.
 - The only thing that moves is a `.Replay.Gbx` you just drove, offered by the
   mod after a finish, uploaded to the exchange that map is on.
-- It is off until you switch it on and paste the key the mod shows, and off
-  again the moment you switch it off.
+- It is off until you switch it on and allow it inside the game, and off again
+  the moment you switch it off. The mod releases its key only after somebody
+  presses Allow on the panel there.
 - Nobody but you and TMX sees the file. The 100% TMX website is not part of the
   upload and is not told about it.
 

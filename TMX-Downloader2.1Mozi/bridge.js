@@ -20,7 +20,13 @@
 //
 // No password, no token and no session is stored by the mod, by this
 // extension or by anybody's server. The login stays in the browser, where it
-// already was. Off until the player switches it on and pastes the key.
+// already was.
+//
+// Off until the player switches it on. Pairing is then automatic: this asks
+// the mod for a key, the mod puts "A browser wants to connect - Allow / No"
+// on the panel in the game, and hands it over once somebody has said yes.
+// Nothing to copy, nothing to type, and the secret still never leaves the
+// machine without a deliberate human act.
 // ============================================================================
 'use strict';
 
@@ -46,6 +52,8 @@ const TMXB = (function () {
         enabled: false,
         key: '',
         port: null,
+        /** The mod's version, once it has said hello. */
+        mod: null,
         /** Why nothing is happening, in words a person can act on. */
         note: 'off',
         last: null,
@@ -81,29 +89,60 @@ const TMXB = (function () {
      * started and stopped far more often than this extension is, and a port
      * remembered from the last session is the most common way a bridge looks
      * broken.
+     *
+     * `/v1/ping` needs no key, on purpose: finding the mod and being allowed
+     * to talk to it are two different questions, and the answer to the first
+     * one is what makes pairing possible without anybody typing anything.
      */
     async function findPort() {
         if (state.port !== null) return state.port;
         for (const port of PORTS) {
             try {
-                const res = await call(port, '/v1/hello');
-                if (res.status === 401) {
-                    state.note = 'the key does not match the one the mod shows';
-                    return null;
-                }
+                const res = await fetch('http://127.0.0.1:' + port + '/v1/ping', { cache: 'no-store' });
                 if (!res.ok) continue;
                 const hello = await res.json();
                 if (!hello || !hello.ok) continue;
                 state.port = port;
-                state.note = 'connected to the game (mod ' + (hello.mod || '?') + ')';
+                state.mod = hello.mod || null;
                 return port;
             } catch (err) {
                 // Connection refused is the ordinary answer when TrackMania is
-                // not running. Not worth a line in the console every 25s.
+                // not running. Not worth a line in the console every 25 s.
             }
         }
-        state.note = 'the game is not running, or the bridge is off in the mod';
+        state.note = 'the game is not running, or the bridge is off in the mod (F9)';
         return null;
+    }
+
+    /**
+     * Ask the game to let us in.
+     *
+     * The mod holds a key it generated itself. Rather than making somebody
+     * copy it out of one window and into another, we ask for it: the mod puts
+     * "A browser wants to connect - Allow / No" on the panel, and hands the
+     * key over once somebody has said yes in the game. Nothing is weaker for
+     * it - the secret still never leaves the machine, and it still takes a
+     * deliberate human act to give it out - and there is nothing to type.
+     *
+     * The same shape as the device code the website uses to link a machine,
+     * with the confirming end in the game instead of the browser.
+     */
+    async function requestPairing(port) {
+        try {
+            const res = await fetch('http://127.0.0.1:' + port + '/v1/pair', { method: 'POST', cache: 'no-store' });
+            const data = await res.json();
+            if (data && data.key) {
+                state.key = data.key;
+                await write({ bridgeKey: state.key });
+                state.note = 'connected to the game' + (state.mod ? ' (mod ' + state.mod + ')' : '');
+                return true;
+            }
+            state.note = 'waiting for you to allow it in the game - press F9';
+        } catch (err) {
+            state.port = null;
+            state.note = 'the game went away while connecting';
+        }
+        return false;
     }
 
     // ------------------------------------------------------------ uploading
@@ -167,14 +206,26 @@ const TMXB = (function () {
     // --------------------------------------------------------------- the loop
 
     async function tick() {
-        if (state.running || !state.enabled || !state.key) return;
+        if (state.running || !state.enabled) return;
         state.running = true;
         try {
             for (;;) {
-                if (!state.enabled || !state.key) break;
+                if (!state.enabled) break;
 
                 const port = await findPort();
                 if (port === null) break;
+
+                // No key yet: ask for one and wait for the player to allow it
+                // in the game. Polled rather than long-polled, because the
+                // answer comes from a human pressing a button, not from a map
+                // being finished.
+                if (!state.key) {
+                    const got = await requestPairing(port);
+                    if (!got) {
+                        await new Promise((resolve) => setTimeout(resolve, 2000));
+                        continue;
+                    }
+                }
 
                 let job = null;
                 try {
@@ -184,9 +235,15 @@ const TMXB = (function () {
                     // activity, so there is no timer to keep warm.
                     const res = await call(port, '/v1/next?wait=' + WAIT_SECONDS);
                     if (res.status === 401) {
-                        state.note = 'the key does not match the one the mod shows';
-                        break;
+                        // The mod generated a new key - the ini was deleted, or
+                        // this is a different machine. Throw ours away and pair
+                        // again rather than sitting here refused for ever.
+                        state.key = '';
+                        await write({ bridgeKey: '' });
+                        state.note = 'reconnecting to the game';
+                        continue;
                     }
+                    state.note = 'connected to the game' + (state.mod ? ' (mod ' + state.mod + ')' : '');
                     const data = await res.json();
                     job = data && data.upload;
                 } catch (err) {
@@ -245,7 +302,7 @@ const TMXB = (function () {
         state.key = got.bridgeKey || '';
         state.last = got.bridgeLast || null;
         if (!state.enabled) state.note = 'off';
-        else if (!state.key) state.note = 'paste the key the mod shows';
+        else state.note = 'looking for the game';
         arm();
         void tick();
     }
@@ -267,6 +324,7 @@ const TMXB = (function () {
                     enabled: state.enabled,
                     hasKey: state.key.length > 0,
                     port: state.port,
+                    mod: state.mod,
                     note: state.note,
                     last: state.last,
                 },
@@ -283,7 +341,7 @@ const TMXB = (function () {
                 if (typeof request.enabled === 'boolean') state.enabled = request.enabled;
                 if (typeof request.key === 'string') state.key = request.key.trim();
                 state.port = null;
-                state.note = !state.enabled ? 'off' : state.key ? 'looking for the game' : 'paste the key the mod shows';
+                state.note = state.enabled ? 'looking for the game' : 'off';
                 await write({ bridgeEnabled: state.enabled, bridgeKey: state.key });
                 sendResponse({ success: true });
                 void tick();

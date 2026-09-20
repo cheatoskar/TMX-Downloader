@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "TMX Universal Track Downloader",
-  "version": "2.7.0",
+  "version": "2.7.1",
   "description": "Bulk download tracks and trackpacks from all TMX exchanges",
   "permissions": [
     "*://tmnf.exchange/*",
@@ -127,6 +127,22 @@
       ],
       "js": [
         "users.js"
+      ],
+      "run_at": "document_end"
+    },
+    {
+      "matches": [
+        "*://tmnf.exchange/replayupload*",
+        "*://tmuf.exchange/replayupload*",
+        "*://original.tm-exchange.com/replayupload*",
+        "*://sunrise.tm-exchange.com/replayupload*",
+        "*://nations.tm-exchange.com/replayupload*"
+      ],
+      "css": [
+        "styles.css"
+      ],
+      "js": [
+        "upload-page.js"
       ],
       "run_at": "document_end"
     }
