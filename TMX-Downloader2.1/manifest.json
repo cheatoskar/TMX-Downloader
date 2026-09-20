@@ -1,14 +1,16 @@
 {
   "manifest_version": 3,
   "name": "TMX Universal Track Downloader",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Bulk download tracks and trackpacks from all TMX exchanges",
   "host_permissions": [
     "*://tmnf.exchange/*",
     "*://tmuf.exchange/*",
     "*://original.tm-exchange.com/*",
     "*://sunrise.tm-exchange.com/*",
-    "*://nations.tm-exchange.com/*"
+    "*://nations.tm-exchange.com/*",
+    "https://100tmx.com/*",
+    "http://127.0.0.1/*"
   ],
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'"
@@ -33,7 +35,8 @@
         "exclusions.js",
         "jszip.min.js",
         "chart.min.js",
-        "content.js"
+        "content.js",
+        "project.js"
       ],
       "run_at": "document_end"
     },
@@ -53,7 +56,8 @@
         "exclusions.js",
         "jszip.min.js",
         "chart.min.js",
-        "trackpack.js"
+        "trackpack.js",
+        "project.js"
       ],
       "run_at": "document_end"
     },
@@ -73,7 +77,8 @@
         "exclusions.js",
         "jszip.min.js",
         "chart.min.js",
-        "trackshow.js"
+        "trackshow.js",
+        "project.js"
       ],
       "run_at": "document_end"
     },
@@ -125,5 +130,16 @@
   ],
   "icons": {
     "128": "icons/icon128.png"
+  },
+  "permissions": [
+    "storage",
+    "alarms"
+  ],
+  "action": {
+    "default_title": "100% TMX replay bridge",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "128": "icons/icon128.png"
+    }
   }
 }

@@ -13,8 +13,9 @@ To reproduce the submitted package from this archive:
 ```bash
 cd TMX-Downloader2.1Mozi
 zip -r -X ../TMX-Downloader-<version>-firefox.zip \
-    manifest.json background.js beta-notice.js content.js trackpack.js \
-    trackshow.js users.js exclusions-data.js exclusions.js \
+    manifest.json background.js bridge.js beta-notice.js content.js \
+    trackpack.js trackshow.js users.js exclusions-data.js exclusions.js \
+    project.js popup.html popup.js \
     chart.min.js jszip.min.js styles.css icons/
 ```
 
@@ -53,6 +54,62 @@ if a string is passed to `setImmediate`, which JSZip never does. It is present
 in the upstream release and we have not altered it — the hash above proves the
 file is unmodified.
 
+## What is new in 1.7.0 / 2.7.0: two hosts beyond the exchanges
+
+Everything before this version spoke only to the five TM-Exchange sites. Two
+features add one host each, and both are listed here rather than left for a
+reviewer to find.
+
+### `100tmx.com` — project status on TMX's own pages (`project.js`)
+
+The 100% TMX project tracks which maps on each exchange have never been
+finished. `project.js` asks its public endpoint
+`https://100tmx.com/api/public/maps?site=<exchange>&ids=<ids>` once per page of
+search results and puts a small badge on each row: still open and what it is
+worth, or already finished and by whom.
+
+- **Read-only, and public.** The same answer is on that website's own pages for
+  anybody to see. No account exists on it for this extension to use.
+- **No credentials.** The request is made by the background script with
+  `credentials: 'omit'`, so no cookie for that domain is attached even if the
+  user happens to have one.
+- **What is sent:** the numeric track ids already visible on the page, and
+  nothing else. No URL, no search terms, no identifier, no browsing history.
+- The site being unreachable costs the page nothing: no badge appears.
+
+### `127.0.0.1` — the replay bridge (`bridge.js`, `popup.html`, `popup.js`)
+
+**Off by default. Nothing is listened to, connected to or sent until the user
+switches it on and pastes a key.**
+
+TMX has no upload API. `POST /api/replays/upload` is authenticated with the
+site's own session cookie and carries an antiforgery token minted for a page on
+the exchange's origin, so the only thing that can upload a replay for a player
+is something already signed in as them — a browser. The 100% TMX game mod runs
+inside TrackMania and has the file; it cannot upload it, and asking players for
+a TMX password so that it could would be the wrong answer to the problem.
+
+So the mod offers the file on loopback and this extension uploads it:
+
+1. The mod (open source: https://github.com/cheatoskar/100-TMX-Bingo-Plugin)
+   opens a socket bound to `127.0.0.1` only, guarded by a random key it prints
+   in its own settings window. The user copies that key into this extension's
+   popup.
+2. `bridge.js` long-polls `http://127.0.0.1:2731x/v1/next`. When a replay is
+   waiting it fetches the bytes from the mod, reads the antiforgery token from
+   the exchange's own `/replayupload` page, and posts the file to that
+   exchange's upload endpoint with the user's existing session — exactly the
+   request the page's own Submit button makes.
+3. The outcome is posted back to the mod so the in-game overlay can show it.
+
+What this does **not** do: it stores no credential of any kind, reads no cookie,
+touches no file the mod did not offer, contacts no server of ours, and sends
+nothing to any third party. The only data that leaves the machine is the replay
+file itself, going to the exchange the user is signed in to, at the moment they
+finished driving it. `storage` holds two values (the on/off switch and the
+pairing key) and `alarms` restarts the connection after the browser has
+suspended the worker.
+
 ## No request monitoring, no data collection
 
 Earlier versions replaced `window.fetch` to record the URLs the page requested.
@@ -69,10 +126,13 @@ address bar. It now reads that from the **Resource Timing API**
 listing resources the page has already loaded. See `findApiUrlFromTimings` and
 `watchApiUrl` in `content.js` and `trackpack.js`.
 
-Nothing is hooked, no request is observed while it happens, and no data leaves
-the browser. The add-on collects, stores and transmits nothing, which is what
-`data_collection_permissions: { "required": ["none"] }` in the manifest
-declares.
+Nothing is hooked and no request is observed while it happens. The add-on
+collects nothing about the user and transmits nothing to its developer, which
+is what `data_collection_permissions: { "required": ["none"] }` in the
+manifest declares. The two hosts described in the section above are the
+exceptions to "no data leaves the browser", and both are the user’s own
+action: a list of track ids to a public read-only endpoint, and a replay they
+just drove going to the exchange they are signed in to.
 
 ## Generated file: `exclusions-data.js`
 

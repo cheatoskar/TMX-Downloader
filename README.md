@@ -43,6 +43,8 @@ Beyond downloading, the extension enhances track and user pages with advanced st
   - **Statistics Card**: Dual scores—Player Score (replays/awards focus) and Builder Score (tracks/packs focus)—with breakdowns and tooltips.
   - **Activity Status**: Badges like "Elite Player" or "Recently Active" based on leaderboard position, recent uploads/replays, and days since last activity.
   - **User Search Leaderboards** (on `/usersearch`): Top 5 lists for builders (tracks), awarded users, and players (replays), plus per-user metadata download buttons.
+- **100% TMX Project Status** (on `/tracksearch`, `/trackpacksearch` and `/trackshow`): a badge on every row saying whether the map is still unfinished for the [100% TMX Project](https://100tmx.com) and what it is worth, or who took it and when — plus an amber badge when somebody is driving it right now. Read from the project’s public endpoint with no cookies and no account.
+- **Replay Bridge** (opt-in): finish a map in TrackMania with the [100% TMX game mod](https://github.com/cheatoskar/100-TMX-Bingo-Plugin) running, and the replay is uploaded to TMX for you — from this browser, with the session you are already signed in with. TMX has no upload API, so the mod hands the file over on `127.0.0.1` and the extension does the upload. **No TMX password is ever asked for or stored, by anything.** Off until you switch it on in the toolbar popup and paste the key the mod shows.
 
 
 ## 🛠️ Installation

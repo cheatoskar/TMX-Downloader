@@ -2413,3 +2413,103 @@ tr.tmx-excl-row > td {
 #environmentChart {
     height: 400px !important;
 }
+
+/* ============================================================================
+   100% TMX PROJECT STATUS
+   Built like the exclusion warnings above and deliberately so: same badge
+   shape, same banner, same --tone trio, because they sit on the same rows and
+   two different visual languages on one line would read as two extensions.
+   The tones differ, though - an exclusion is a warning, this is a scoreboard,
+   and green here means "nobody has taken this yet".
+   ============================================================================ */
+
+.tmx-p100-open {
+    --tmx-p100-accent: #2f9e5e;
+    --tmx-p100-surface: rgba(47, 158, 94, 0.13);
+    --tmx-p100-border: rgba(47, 158, 94, 0.42);
+}
+
+.tmx-p100-done {
+    --tmx-p100-accent: #8b8d98;
+    --tmx-p100-surface: rgba(139, 141, 152, 0.13);
+    --tmx-p100-border: rgba(139, 141, 152, 0.38);
+}
+
+.tmx-p100-neutral {
+    --tmx-p100-accent: #8b8d98;
+    --tmx-p100-surface: rgba(139, 141, 152, 0.13);
+    --tmx-p100-border: rgba(139, 141, 152, 0.38);
+}
+
+/* Amber, the same colour the website gives a self-reported mark - somebody
+   saying they are on the map is not the same kind of fact as the rest. */
+.tmx-p100-here {
+    --tmx-p100-accent: #d98d28;
+    --tmx-p100-surface: rgba(217, 141, 40, 0.15);
+    --tmx-p100-border: rgba(217, 141, 40, 0.42);
+}
+
+.tmx-p100-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 6px;
+    padding: 1px 6px;
+    border: 1px solid var(--tmx-p100-border);
+    border-radius: 4px;
+    background: var(--tmx-p100-surface);
+    color: var(--tmx-p100-accent);
+    font-size: 9.5px;
+    font-weight: 700;
+    line-height: 1.5;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    vertical-align: middle;
+    cursor: help;
+    flex: 0 0 auto;
+}
+
+.tmx-p100-banner {
+    margin: 0 0 14px 0;
+    padding: 14px 16px;
+    border: 1px solid var(--tmx-p100-border);
+    border-left: 4px solid var(--tmx-p100-accent);
+    border-radius: 6px;
+    background: var(--tmx-p100-surface);
+    color: var(--textcolor, inherit);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.tmx-p100-banner-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.tmx-p100-banner-head .tmx-p100-badge {
+    margin-left: 0;
+}
+
+.tmx-p100-banner-head strong {
+    font-size: 14px;
+    color: var(--tmx-p100-accent);
+}
+
+.tmx-p100-banner-blurb {
+    margin: 0 0 10px 0;
+    opacity: 0.92;
+}
+
+.tmx-p100-banner-foot {
+    padding-top: 10px;
+    border-top: 1px solid var(--tmx-p100-border);
+    font-size: 11.5px;
+    opacity: 0.78;
+}
+
+.tmx-p100-banner-foot a {
+    color: var(--tmx-p100-accent);
+    text-decoration: underline;
+}

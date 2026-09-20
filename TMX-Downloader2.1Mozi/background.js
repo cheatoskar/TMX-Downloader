@@ -18,6 +18,19 @@ browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  // The 100% TMX project status shown on TMX's own pages. Credentials are
+  // omitted deliberately: the endpoint is public, there is no account behind
+  // it, and a request made from a page on tmnf.exchange should not be quietly
+  // carrying a cookie for somewhere else.
+  if (request.action === 'fetchProject') {
+    fetch(request.url, { credentials: 'omit', cache: 'no-store' }).then(r => {
+      if (!r.ok) throw new Error('HTTP ' + r.status + ': ' + r.statusText);
+      return r.json();
+    }).then(data => sendResponse({success: true, data}))
+      .catch(error => sendResponse({success: false, error: error.message}));
+    return true;
+  }
+
   if (request.action === 'fetchBinary') {
     fetch(request.url, {
       credentials: 'include'

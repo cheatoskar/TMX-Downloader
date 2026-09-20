@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>100% TMX</title>
+<style>
+    :root {
+        color-scheme: dark;
+        --bg: #15171a;
+        --card: #1c1f24;
+        --line: #2b3038;
+        --text: #e6e8ec;
+        --muted: #9aa0aa;
+        --accent: #2f9e5e;
+        --warn: #d97b0a;
+        --bad: #e5484d;
+    }
+    body {
+        width: 320px;
+        margin: 0;
+        padding: 14px;
+        background: var(--bg);
+        color: var(--text);
+        font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    h1 {
+        margin: 0 0 2px 0;
+        font-size: 14px;
+        letter-spacing: 0.01em;
+    }
+    p.sub {
+        margin: 0 0 12px 0;
+        color: var(--muted);
+        font-size: 11.5px;
+    }
+    .card {
+        padding: 11px 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--card);
+    }
+    .row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    label.toggle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    input[type="text"] {
+        width: 100%;
+        margin-top: 8px;
+        padding: 6px 8px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #121417;
+        color: var(--text);
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11.5px;
+        box-sizing: border-box;
+    }
+    button {
+        margin-top: 8px;
+        padding: 6px 10px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #23272e;
+        color: var(--text);
+        font: inherit;
+        font-size: 12px;
+        cursor: pointer;
+    }
+    button:hover { border-color: var(--accent); color: var(--accent); }
+    .status {
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px solid var(--line);
+        font-size: 11.5px;
+        color: var(--muted);
+    }
+    .dot {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--muted);
+        flex: 0 0 auto;
+    }
+    .dot.on { background: var(--accent); }
+    .dot.warn { background: var(--warn); }
+    .note { margin: 6px 0 0 0; }
+    .last-ok { color: var(--accent); }
+    .last-bad { color: var(--warn); }
+    .foot {
+        margin: 12px 0 0 0;
+        font-size: 11px;
+        color: var(--muted);
+    }
+    a { color: var(--accent); }
+    .hidden { display: none; }
+</style>
+</head>
+<body>
+    <h1>100% TMX — replay bridge</h1>
+    <p class="sub">Uploads the replay you just drove to TMX, signed in as you in this browser.</p>
+
+    <div class="card">
+        <label class="toggle">
+            <input type="checkbox" id="enabled">
+            <span>Upload replays from the game</span>
+        </label>
+
+        <div id="keyblock">
+            <input type="text" id="key" placeholder="pairing key from the mod" spellcheck="false" autocomplete="off">
+            <button id="save">Save</button>
+        </div>
+
+        <div class="status">
+            <div class="row"><span class="dot" id="dot"></span><span id="note">…</span></div>
+            <p class="note hidden" id="last"></p>
+        </div>
+    </div>
+
+    <p class="foot">
+        In TrackMania press <strong>F9</strong>, open Settings, tick
+        “Upload my replays through the browser” and copy the key it shows.
+        Your TMX login never leaves the browser — the mod never sees it.
+        <a href="https://100tmx.com/link" target="_blank" rel="noopener noreferrer">More about the mod</a>
+    </p>
+
+    <script src="popup.js"></script>
+</body>
+</html>
