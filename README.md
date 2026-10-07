@@ -207,6 +207,12 @@ Issues? Open a ticket with site + steps to repro. Ideas? Discussions welcome.
 - Test on all supported exchanges.
 - Add console logs with `[TMX]` prefix.
 
+## Development Note
+
+This extension was developed with the help of [Claude Code](https://claude.com/claude-code). The ideas, presets, design and testing are my own, with AI assisting throughout the development process. If you find a bug, please report it in the [issues](https://github.com/cheatoskar/TMX-Downloader/issues).
+
+---
+
 ## 📄 License
 
 This project is MIT licensed. See [LICENSE](LICENSE) for details.
