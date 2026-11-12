@@ -1,3 +1,5 @@
+<img src="docs/logo/logo.svg" width="96" align="right" alt="TMX Universal Track Downloader logo">
+
 # TMX Downloader
 [![Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-Available-blue?logo=google-chrome)](https://chromewebstore.google.com/detail/hplkjclpiopmjlpejpgkoobghlpbjopp)
 [![Made with JavaScript](https://img.shields.io/badge/Made_with-JavaScript-orange?style=flat&logo=javascript)](https://developer.mozilla.org/en-US/docs/Web/JavaScript)
